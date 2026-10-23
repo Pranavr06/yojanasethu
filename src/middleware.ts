@@ -71,14 +71,29 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/placements') ||
     pathname.startsWith('/admin');
 
-  // 1. If user is NOT logged in and trying to access protected route
+  // 1. Root path (/): Show login page by default for unauthenticated visitors,
+  // or redirect authenticated users to their authorized dashboard
+  if (pathname === '/') {
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', request.url));
+    } else {
+      const rawRole =
+        (user.user_metadata?.role as string) ||
+        (user.app_metadata?.role as string) ||
+        'student';
+      const normalized = normalizeRole(rawRole) || 'student';
+      return NextResponse.redirect(new URL(ROLE_DASHBOARDS[normalized], request.url));
+    }
+  }
+
+  // 2. If user is NOT logged in and trying to access protected route
   if (!user && isProtectedPath) {
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('redirectTo', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // 2. If user IS logged in
+  // 3. If user IS logged in
   if (user) {
     // Resolve user's role from metadata
     const rawRole =
