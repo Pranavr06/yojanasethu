@@ -19,7 +19,6 @@
   InAppNotification,
   AnnouncementStatus,
   JobType,
-
 } from '@/types';
 import { createClient } from '@supabase/supabase-js';
 
@@ -168,34 +167,26 @@ export async function dbGetFullStudent(studentIdOrUsn: string): Promise<FullStud
 /**
  * Fetch all students from database
  */
-
 export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
     const { data: studentProfiles, error } = await supabase
       .from('profiles')
-      .select('id')
+      .select('*, departments(code, name)')
       .eq('role', 'student');
 
-    if (error) {
-      console.error('dbGetAllStudents error:', error);
-      throw error;
+    if (error || !studentProfiles || studentProfiles.length === 0) return [];
+
+    const fullList: FullStudentProfile[] = [];
+    for (const sp of studentProfiles) {
+      const full = await dbGetFullStudent(sp.id);
+      if (full) fullList.push(full);
     }
-
-    if (!studentProfiles || studentProfiles.length === 0) return [];
-
-    // Fetch full student profiles, including academic records and evidence.
-    const results = await Promise.all(
-      studentProfiles.map((student) => dbGetFullStudent(student.id))
-    );
-
-    return results.filter(
-      (student): student is FullStudentProfile => student !== null
-    );
+    return fullList;
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
-    throw err;
+    return [];
   }
 }
 
@@ -351,7 +342,7 @@ export async function dbVerifySubmission(params: {
         const { data: updatedSkill } = await supabase
           .from('student_skill_passport')
           .update({
-            tier: 'evidenced',
+            tier: 'faculty_verified',
             verification_badge: true,
             evidence_source: `Faculty Review (${reviewer_name || 'Dr. K. Sharma'})`,
             updated_at: new Date().toISOString(),
@@ -367,7 +358,7 @@ export async function dbVerifySubmission(params: {
             student_id: updatedSub.student_id,
             skill_name: skillName,
             category: 'programming',
-            tier: 'evidenced',
+            tier: 'faculty_verified',
             confidence_score: 90,
             evidence_source: `Faculty Review (${reviewer_name || 'Dr. K. Sharma'})`,
             evidence_date: new Date().toISOString().split('T')[0],
@@ -788,7 +779,7 @@ export async function dbGetDepartments(): Promise<Department[]> {
 }
 
 /**
- * Student submits an Academic Correction Request to faculty mentor
+ * Submit an academic correction request from a student
  */
 export async function dbSubmitAcademicCorrectionRequest(params: {
   student_id: string;
@@ -798,7 +789,6 @@ export async function dbSubmitAcademicCorrectionRequest(params: {
   reason: string;
 }): Promise<AcademicCorrectionRequest | null> {
   if (!isSupabaseConfigured || !supabase) return null;
-
   try {
     const { data, error } = await supabase
       .from('academic_correction_requests')
@@ -812,15 +802,9 @@ export async function dbSubmitAcademicCorrectionRequest(params: {
       })
       .select('*')
       .single();
-
-    if (error || !data) {
-      console.error('dbSubmitAcademicCorrectionRequest error:', error);
-      return null;
-    }
-
+    if (error || !data) return null;
     return data as AcademicCorrectionRequest;
   } catch (err) {
-    console.error('dbSubmitAcademicCorrectionRequest error:', err);
     return null;
   }
 }
@@ -1044,7 +1028,6 @@ export async function dbGetMentorMentees(options?: {
     return [];
   }
 }
-
 // ============================================================================
 // PLACEMENT TRANSPARENCY HUB: ANNOUNCEMENTS, CALENDAR & NOTIFICATIONS
 // ============================================================================
@@ -1300,7 +1283,7 @@ export async function dbGetPlacementAnnouncements(options?: {
         const matchCompany = (item.company_name || '').toLowerCase().includes(q);
         const matchRole = (item.role_title || '').toLowerCase().includes(q);
         const matchDesc = (item.job_description || '').toLowerCase().includes(q);
-        const matchSkill = (item.required_skills || []).some((s) => s.name.toLowerCase().includes(q));
+        const matchSkill = (item.required_skills || []).some((s: any) => s.name?.toLowerCase().includes(q));
         if (!matchCompany && !matchRole && !matchDesc && !matchSkill) return false;
       }
       return true;

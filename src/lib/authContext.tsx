@@ -297,10 +297,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSupabaseUser(null);
       setSession(null);
       setRole(null);
-      router.push('/login');
-      router.refresh();
+      try {
+        localStorage.removeItem('pathpilot_session_user');
+        localStorage.removeItem('yojanasethu_session_user');
+      } catch (e) {}
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      } else {
+        router.push('/login');
+      }
     } catch (err) {
       console.error('Sign out error:', err);
+      if (typeof window !== 'undefined') {
+        window.location.href = '/login';
+      }
     } finally {
       setLoading(false);
     }

@@ -27,6 +27,11 @@ import {
   Radio,
   FileCheck2,
   Bot,
+  FileText,
+  BrainCircuit,
+  Code2,
+  Award,
+  BookOpen,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -146,95 +151,192 @@ export default function Sidebar({
             </div>
           </div>
 
-          {/* SECTION 2: ROLE-SPECIFIC WORKSPACE */}
+          {/* SECTION 2: STUDENT WORKSPACE (Merged from Dashboard Sections & Existing Modules) */}
           {role === 'student' && (
-            <div>
-              <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
-                ACADEMICS & PROOF
-              </span>
-              <div className="space-y-1">
-                <Link
-                  href="/student/academic-truth"
-                  onClick={onClose}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    pathname.startsWith('/student/academic-truth')
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
-                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <GraduationCap className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                  <span>Contineo Academic Truth</span>
-                </Link>
+            <>
+              {/* ACADEMICS & PROOF */}
+              <div>
+                <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
+                  ACADEMICS & PROOF
+                </span>
+                <div className="space-y-1">
+                  <Link
+                    href="/student/academic-truth"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/academic-truth')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <GraduationCap className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>Academic Records</span>
+                  </Link>
 
-                <Link
-                  href="/student/cgpa-calculator"
-                  onClick={onClose}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    pathname.startsWith('/student/cgpa-calculator')
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
-                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <Calculator className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                  <span>CGPA Simulation Planner</span>
-                </Link>
+                  <Link
+                    href="/student/cgpa-calculator"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/cgpa-calculator')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <Calculator className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>CGPA Calculator</span>
+                  </Link>
 
-                <Link
-                  href="/student/skill-passport"
-                  onClick={onClose}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    pathname.startsWith('/student/skill-passport')
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
-                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <ShieldCheck className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                  <span>Verifiable Skill Passport</span>
-                </Link>
+                  <Link
+                    href="/student/skill-passport"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/skill-passport')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <ShieldCheck className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>Skill Passport</span>
+                  </Link>
 
-                <Link
-                  href="/student/roadmap"
-                  onClick={onClose}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    pathname.startsWith('/student/roadmap')
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
-                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <Calendar className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                  <span>30-Day Targeted Roadmap</span>
-                </Link>
-
-                <Link
-                  href="/student/placement-hub"
-                  onClick={onClose}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    pathname.startsWith('/student/placement-hub') || pathname.startsWith('/student/placements')
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
-                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  <span>Placement Transparency Hub</span>
-                </Link>
-
-                <Link
-                  href="/student/mock-interview"
-                  onClick={onClose}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    pathname.startsWith('/student/mock-interview')
-                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
-                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
-                  }`}
-                >
-                  <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                  <span className="flex-1">AI Mock Interview</span>
-                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
-                    Voice AI
-                  </span>
-                </Link>
+                  <Link
+                    href="/student/certificates"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/certificates')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <Award className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>Certificates</span>
+                  </Link>
+                </div>
               </div>
-            </div>
+
+              {/* CAREER & PREPARATION */}
+              <div>
+                <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
+                  CAREER & PREPARATION
+                </span>
+                <div className="space-y-1">
+                  <Link
+                    href="/student/career-coach"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/career-coach') || pathname.startsWith('/student/ai-coach') || pathname.startsWith('/student/coach')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <BrainCircuit className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>AI Career Coach</span>
+                  </Link>
+
+                  <Link
+                    href="/student/mock-interview"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/mock-interview')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <span className="flex-1">AI Mock Interview</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      Voice AI
+                    </span>
+                  </Link>
+
+                  <Link
+                    href="/student/roadmap"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/roadmap')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <Calendar className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>Career Roadmap</span>
+                  </Link>
+
+                  <Link
+                    href="/student/resume-builder"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/resume-builder') || pathname.startsWith('/student/resume')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>Resume Builder</span>
+                  </Link>
+
+                  <Link
+                    href="/student/dsa-tracker"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/dsa-tracker') || pathname.startsWith('/student/dsa')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <Code2 className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>DSA Tracker</span>
+                  </Link>
+
+                  <Link
+                    href="/student/learn-programming"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/learn-programming') || pathname.startsWith('/student/learn')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <BookOpen className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>Learn Programming</span>
+                  </Link>
+                </div>
+              </div>
+
+              {/* CAMPUS PLACEMENT */}
+              <div>
+                <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
+                  CAMPUS PLACEMENT
+                </span>
+                <div className="space-y-1">
+                  <Link
+                    href="/student/placement-hub"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/placement-hub') || pathname.startsWith('/student/placements')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Placement Hub</span>
+                  </Link>
+
+                  <Link
+                    href="/student/placement-history"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/placement-history')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <BarChart3 className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                    <span>Placement History</span>
+                  </Link>
+                </div>
+              </div>
+            </>
           )}
 
           {(role === 'faculty' || role === 'mentor') && (
