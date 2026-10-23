@@ -7,7 +7,7 @@ import {
   BriefcaseBusiness, GraduationCap, Menu, X, Upload,
   Trash2, Search, Target, BookOpen, Sparkles, CheckCircle2,
   ArrowRight, Download, Briefcase, ShieldCheck, Calculator,
-  Calendar, ExternalLink,
+  Calendar, ExternalLink, LogOut,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/authContext";
@@ -47,7 +47,7 @@ const nav = [
 ];
 
 export default function StudentDashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [active, setActive] = useState("overview");
   const [search, setSearch] = useState("");
@@ -139,24 +139,52 @@ export default function StudentDashboard() {
             <p className="px-3 pb-2 text-xs font-bold uppercase text-slate-400">
               Existing modules
             </p>
-            <a className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/academic-truth">
+            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/academic-truth">
               Academic Records
-            </a>
-            <a className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/cgpa-calculator">
+            </Link>
+            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/cgpa-calculator">
               CGPA Calculator
-            </a>
-            <a className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/roadmap">
+            </Link>
+            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/roadmap">
               Career Roadmap
-            </a>
-            <a className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/skill-passport">
+            </Link>
+            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/skill-passport">
               Skill Passport
-            </a>
+            </Link>
+            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/placement-hub">
+              Placement Hub
+            </Link>
+            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50 text-indigo-600 font-medium" href="/login">
+              Switch Persona / Login
+            </Link>
           </div>
         </nav>
 
-        <div className="border-t p-4 text-sm">
-          <p className="font-semibold">Student Account</p>
-          <p className="mt-1 text-xs text-slate-500">Demo workspace</p>
+        <div className="border-t border-slate-200 p-3 bg-slate-50/50">
+          <div className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-sm">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-xs shrink-0 shadow-sm">
+                {user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'S'}
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-slate-900 truncate">
+                  {user?.full_name || 'Student Account'}
+                </p>
+                <p className="text-[10px] text-slate-500 truncate">
+                  {user?.email || (user?.usn ? `USN: ${user.usn}` : 'NMAMIT Student')}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => logout()}
+              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 ml-1"
+              title="Sign Out"
+              aria-label="Sign Out"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -172,9 +200,21 @@ export default function StudentDashboard() {
             </button>
             <h2 className="font-bold">My Career Dashboard</h2>
           </div>
-          <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
-            Demo mode
-          </span>
+          <div className="flex items-center gap-2.5">
+            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700">
+              <GraduationCap size={14} />
+              <span>{user?.full_name || 'Student Career Desk'}</span>
+            </span>
+
+            <button
+              onClick={() => logout()}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-600 hover:bg-rose-100 hover:border-rose-300 transition-colors shadow-sm"
+              title="Sign Out of student account"
+            >
+              <LogOut size={14} />
+              <span>Log Out</span>
+            </button>
+          </div>
         </header>
 
         <div className="mx-auto max-w-7xl space-y-8 p-4 sm:p-8">

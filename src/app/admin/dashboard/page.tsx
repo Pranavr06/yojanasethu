@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/authContext';
-import { AppShell } from '@/components/AppShell';
 import {
   ShieldAlert,
   Users,
@@ -123,11 +122,18 @@ export default function AdminDashboardPage() {
   const pendingRequests = requests.filter((r) => r.status === 'pending');
 
   return (
-    <AppShell
-      title="System Governance & RBAC Administration"
-      subtitle="YojanaSethu Role Approvals, Privileged Access Gates, & Campus Directory"
-    >
-      <div className="space-y-6">
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-2 border-b border-slate-200/80 dark:border-slate-800/80">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+            <ShieldAlert className="w-6 h-6 text-indigo-600 dark:text-indigo-400" />
+            System Governance & RBAC Administration
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            YojanaSethu Role Approvals, Privileged Access Gates, & Campus Directory
+          </p>
+        </div>
+      </div>
         {/* Top Metric Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="glass-panel p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white/70 dark:bg-slate-900/60 shadow-sm">
@@ -468,7 +474,6 @@ export default function AdminDashboardPage() {
             </div>
           </div>
         )}
-      </div>
-    </AppShell>
+    </div>
   );
 }

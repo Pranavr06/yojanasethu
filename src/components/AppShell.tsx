@@ -16,6 +16,7 @@ import {
   Briefcase,
   Radio,
   LogOut,
+  LogIn,
   ChevronDown,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -126,47 +127,66 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
               {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
             </button>
 
-            {user && (
-              <div className="relative">
+            {user ? (
+              <div className="flex items-center gap-2">
                 <button
-                  onClick={() => setProfileOpen(!profileOpen)}
-                  className="flex items-center gap-2 rounded-xl border border-slate-200 p-2 text-xs dark:border-slate-800"
+                  onClick={() => logout()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50/70 dark:bg-rose-950/25 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/40 transition-colors shadow-sm"
+                  title="Sign Out"
                 >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 font-bold text-white">
-                    {user.full_name?.charAt(0) || 'U'}
-                  </span>
-                  <span className="hidden max-w-[120px] truncate sm:inline">
-                    {user.full_name}
-                  </span>
-                  <ChevronDown size={14} />
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Sign Out</span>
                 </button>
 
-                {profileOpen && (
-                  <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-800 dark:bg-slate-900">
-                    <p className="truncate text-sm font-bold">{user.full_name}</p>
-                    <p className="truncate text-xs text-slate-500">{user.email}</p>
+                <div className="relative">
+                  <button
+                    onClick={() => setProfileOpen(!profileOpen)}
+                    className="flex items-center gap-2 rounded-xl border border-slate-200 p-2 text-xs dark:border-slate-800"
+                  >
+                    <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 font-bold text-white">
+                      {user.full_name?.charAt(0) || 'U'}
+                    </span>
+                    <span className="hidden max-w-[120px] truncate sm:inline">
+                      {user.full_name}
+                    </span>
+                    <ChevronDown size={14} />
+                  </button>
 
-                    <Link
-                      href="/login"
-                      onClick={() => setProfileOpen(false)}
-                      className="mt-3 block rounded-lg p-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-                    >
-                      Switch Persona
-                    </Link>
+                  {profileOpen && (
+                    <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+                      <p className="truncate text-sm font-bold">{user.full_name}</p>
+                      <p className="truncate text-xs text-slate-500">{user.email}</p>
 
-                    <button
-                      onClick={() => {
-                        setProfileOpen(false);
-                        logout();
-                      }}
-                      className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
-                    >
-                      <LogOut size={15} />
-                      Sign Out
-                    </button>
-                  </div>
-                )}
+                      <Link
+                        href="/login"
+                        onClick={() => setProfileOpen(false)}
+                        className="mt-3 block rounded-lg p-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        Switch Persona
+                      </Link>
+
+                      <button
+                        onClick={() => {
+                          setProfileOpen(false);
+                          logout();
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
+                      >
+                        <LogOut size={15} />
+                        Sign Out
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
+            ) : (
+              <Link
+                href="/login"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In</span>
+              </Link>
             )}
           </div>
         </header>
