@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
       github_repo_url,
       document_storage_path,
       credential_url,
-      type: type || (document_storage_path ? 'certificate' : 'github_repo'),
+      type: type || (document_storage_path ? 'certificate' : 'project'),
       description: description || 'Submitted for faculty mentor review.',
     });
 
