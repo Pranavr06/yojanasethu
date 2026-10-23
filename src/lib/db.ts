@@ -958,7 +958,11 @@ export async function dbGetAcademicCorrectionRequests(status?: string): Promise<
       .order('submitted_at', { ascending: false });
 
     if (status && status !== 'all') {
-      query = query.eq('status', status);
+      if (status === 'pending') {
+        query = query.in('status', ['pending', 'retake_granted']);
+      } else {
+        query = query.eq('status', status);
+      }
     }
 
     const { data, error } = await query;
@@ -1055,8 +1059,16 @@ export async function dbGetMentorSubmissions(options?: {
 
     const mapped = rawSubmissions.map((sub) => {
       const student = pMap.get(sub.student_id);
+      const retake = memoryRetakeGrants.get(sub.id);
+      const isRetake = sub.can_retake === true || retake?.can_retake === true;
       return {
         ...sub,
+        can_retake: isRetake,
+        max_attempts_allowed: sub.max_attempts_allowed ?? retake?.max_attempts_allowed ?? 2,
+        retake_feedback: sub.retake_feedback ?? retake?.retake_feedback ?? null,
+        retake_granted_by: sub.retake_granted_by ?? retake?.retake_granted_by ?? null,
+        retake_granted_at: sub.retake_granted_at ?? retake?.retake_granted_at ?? null,
+        status: isRetake ? 'retake_granted' : sub.status,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
         student_branch: (student as any)?.departments?.code || 'ISE',
@@ -1864,12 +1876,59 @@ export async function dbGetSubmissionById(submissionId: string): Promise<Evidenc
         .eq('id', submissionId)
         .maybeSingle();
 
-      if (!error && data) return data as EvidenceSubmission;
+      if (!error && data) {
+        const retake = memoryRetakeGrants.get(submissionId);
+        const isRetake = data.can_retake === true || retake?.can_retake === true;
+        return {
+          ...data,
+          can_retake: isRetake,
+          max_attempts_allowed: data.max_attempts_allowed ?? retake?.max_attempts_allowed ?? 2,
+          retake_feedback: data.retake_feedback ?? retake?.retake_feedback ?? null,
+          status: isRetake ? 'retake_granted' : data.status,
+        } as EvidenceSubmission;
+      }
     } catch (e) {
       // fallback
     }
   }
   return null;
+}
+
+/**
+ * Fetch all evidence submissions for a student (with retake authorization attached)
+ */
+export async function dbGetStudentEvidenceSubmissions(studentId: string): Promise<EvidenceSubmission[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  try {
+    const resolvedId = await dbResolveStudentProfileId(studentId);
+    if (!resolvedId) return [];
+
+    const { data: raw, error } = await supabase
+      .from('evidence_submissions')
+      .select('*')
+      .eq('student_id', resolvedId)
+      .order('submitted_at', { ascending: false });
+
+    if (error || !raw) return [];
+
+    return raw.map((sub) => {
+      const retake = memoryRetakeGrants.get(sub.id);
+      const isRetake = sub.can_retake === true || retake?.can_retake === true;
+      return {
+        ...sub,
+        can_retake: isRetake,
+        max_attempts_allowed: sub.max_attempts_allowed ?? retake?.max_attempts_allowed ?? 2,
+        retake_feedback: sub.retake_feedback ?? retake?.retake_feedback ?? null,
+        retake_granted_by: sub.retake_granted_by ?? retake?.retake_granted_by ?? null,
+        retake_granted_at: sub.retake_granted_at ?? retake?.retake_granted_at ?? null,
+        status: isRetake ? 'retake_granted' : sub.status,
+      } as EvidenceSubmission;
+    });
+  } catch (err) {
+    console.error('dbGetStudentEvidenceSubmissions error:', err);
+    return [];
+  }
 }
 
 export async function dbSaveCertificateAssessment(params: {

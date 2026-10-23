@@ -129,6 +129,18 @@ export default function MentorApprovalDesk({
       const data = await res.json();
       if (res.ok) {
         setSuccessToast(data.message || 'Decision recorded successfully.');
+        const targetSub = pendingSubmissions.find((s) => s.id === submissionId);
+        if (targetSub) {
+          if (action === 'grant_retake') {
+            targetSub.can_retake = true;
+            targetSub.status = 'retake_granted';
+            targetSub.retake_feedback = reasonOrFeedback || null;
+          } else if (action === 'approve') {
+            targetSub.status = 'verified';
+          } else if (action === 'reject') {
+            targetSub.status = 'rejected';
+          }
+        }
         onRefresh();
         setRejectDialogSubId(null);
         setRetakeDialogSubId(null);
@@ -226,12 +238,14 @@ export default function MentorApprovalDesk({
       ) : (
         <div className="space-y-4">
           {filteredList.map((sub) => {
-            const isPending = sub.status === 'pending';
             const isVerified = sub.status === 'verified';
+            const isRetakeActive = sub.status === 'retake_granted' || sub.can_retake === true;
+            const isPending = sub.status === 'pending' && !isRetakeActive;
             const hasScore = sub.assessment_score !== undefined && sub.assessment_score !== null;
             const attemptsCount = sub.attempts_count || 1;
             const maxAttempts = sub.max_attempts_allowed || 2;
             const isMaxAttemptsReached = attemptsCount >= 2;
+            const hasNoRetakesLeft = isMaxAttemptsReached || isRetakeActive;
 
             const isExpanded = expandedAssessmentId === sub.id;
             const assessment = assessmentDataMap[sub.id];
@@ -265,14 +279,16 @@ export default function MentorApprovalDesk({
                       </span>
                       <span
                         className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded ${
-                          isPending
+                          isRetakeActive
+                            ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30'
+                            : isPending
                             ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300'
                             : isVerified
                             ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300'
                             : 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300'
                         }`}
                       >
-                        {sub.status}
+                        {isRetakeActive ? 'Retake Authorized' : sub.status}
                       </span>
                     </div>
 
@@ -308,7 +324,11 @@ export default function MentorApprovalDesk({
 
                       <div className="flex items-center gap-3">
                         <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                          Attempt {attemptsCount} of {maxAttempts}
+                          {isRetakeActive
+                            ? 'Attempt 1 of 2 • 0 Retakes Available (Retake Authorized)'
+                            : isMaxAttemptsReached
+                            ? 'Attempt 2 of 2 • 0 Retakes Available'
+                            : `Attempt ${attemptsCount} of ${maxAttempts} • 1 Retake Available`}
                         </span>
 
                         <button
@@ -448,17 +468,23 @@ export default function MentorApprovalDesk({
                       {/* Action 2: Grant One Additional Attempt */}
                       <button
                         onClick={() => setRetakeDialogSubId(sub.id)}
-                        disabled={processingId === sub.id || isMaxAttemptsReached}
-                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition-colors disabled:opacity-40"
+                        disabled={processingId === sub.id || hasNoRetakesLeft}
+                        className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                         title={
-                          isMaxAttemptsReached
-                            ? 'Maximum assessment attempts (2) already reached.'
+                          isRetakeActive
+                            ? 'Retake already authorized for student. Exactly 0 attempts available to grant.'
+                            : isMaxAttemptsReached
+                            ? 'Maximum assessment attempts (2) already utilized. Policy prohibits further attempts.'
                             : 'Grant student exactly one additional assessment attempt with guidance feedback.'
                         }
                       >
                         <RotateCcw className="w-3.5 h-3.5 text-indigo-600" />
                         <span>
-                          {isMaxAttemptsReached ? 'Retake Limit Reached (2/2)' : 'Grant Retake (1 Left)'}
+                          {isRetakeActive
+                            ? 'Retake Authorized (0 Attempts Available)'
+                            : isMaxAttemptsReached
+                            ? 'Retake Limit Reached (0 Left)'
+                            : 'Grant Retake (1 Left)'}
                         </span>
                       </button>
 

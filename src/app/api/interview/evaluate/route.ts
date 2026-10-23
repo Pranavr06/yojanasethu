@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+// @ts-ignore
 import { GoogleGenAI } from "@google/genai";
 
 export const runtime = "nodejs";

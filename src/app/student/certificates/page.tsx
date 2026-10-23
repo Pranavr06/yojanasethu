@@ -153,6 +153,56 @@ export default function CertificatesPage() {
     resolveStudent();
   }, [user]);
 
+  // Fetch recorded credentials & retake status from server
+  useEffect(() => {
+    async function loadStudentEvidence() {
+      if (!user) return;
+      const targetId = studentProfileId || (user.id?.includes('-') ? user.id : '');
+      if (!targetId) return;
+
+      try {
+        const res = await fetch(`/api/evidence?student_id=${encodeURIComponent(targetId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (Array.isArray(data.submissions) && data.submissions.length > 0) {
+            const mappedDbCerts: CertificateItem[] = data.submissions.map((sub: any) => {
+              const isRetake = sub.can_retake === true || sub.status === 'retake_granted';
+              return {
+                id: sub.id,
+                title: sub.title,
+                skillName: sub.associated_skills?.[0] || sub.technologies?.[0] || 'Technical Skill',
+                subject: (sub.subject as AssessmentSubject) || 'python',
+                subjectLabel: SUBJECT_METADATA[sub.subject as AssessmentSubject]?.label || sub.subject || 'General Skill',
+                issuer: sub.issuer_or_organization || 'Authorized Organization',
+                date: sub.issue_date || (sub.submitted_at ? new Date(sub.submitted_at).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : 'Recent'),
+                credentialUrl: sub.credential_url || null,
+                fileName: sub.document_storage_path ? sub.document_storage_path.split('/').pop() : `${sub.title.replace(/\s+/g, '_')}.pdf`,
+                fileSize: '1.2 MB',
+                status: isRetake ? 'retake_granted' : sub.status,
+                assessmentScore: sub.assessment_score,
+                attemptsCount: sub.attempts_count || (sub.assessment_score ? 1 : 0),
+                maxAttempts: sub.max_attempts_allowed || 2,
+                canRetake: isRetake,
+                retakeFeedback: sub.retake_feedback,
+                verifiedBy: sub.status === 'verified' ? 'Faculty Mentor' : undefined,
+              };
+            });
+
+            setCertificates((prev) => {
+              const dbIds = new Set(mappedDbCerts.map((c) => c.id));
+              const nonDuplicateDefaults = prev.filter((p) => !dbIds.has(p.id));
+              return [...mappedDbCerts, ...nonDuplicateDefaults];
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load student evidence submissions:', err);
+      }
+    }
+
+    loadStudentEvidence();
+  }, [user, studentProfileId]);
+
   // Auto classify subject whenever title, issuer, or skill changes
   useEffect(() => {
     if (!certTitle.trim() && !skillName.trim()) {
@@ -485,10 +535,10 @@ export default function CertificatesPage() {
                         <CheckCircle2 className="w-3 h-3" />
                         Verified by Faculty
                       </span>
-                    ) : cert.status === 'retake_granted' ? (
+                    ) : (cert.status === 'retake_granted' || cert.canRetake) ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/30">
-                        <RotateCcw className="w-3 h-3 animate-spin" />
-                        Retake Authorized
+                        <RotateCcw className="w-3 h-3 text-indigo-600" />
+                        Retake Authorized (Attempt 2)
                       </span>
                     ) : cert.status === 'pending_assessment' ? (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-500/30">
@@ -542,14 +592,14 @@ export default function CertificatesPage() {
                   </div>
 
                   {/* Retake feedback banner if granted */}
-                  {cert.status === 'retake_granted' && cert.retakeFeedback && (
+                  {(cert.status === 'retake_granted' || cert.canRetake) && (
                     <div className="mt-2.5 p-2.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 text-xs text-indigo-900 dark:text-indigo-200 space-y-1">
                       <span className="font-bold flex items-center gap-1 text-[11px]">
                         <RotateCcw className="w-3 h-3 text-indigo-600" />
-                        Faculty Mentor Retake Feedback:
+                        Faculty Mentor Retake Guidance:
                       </span>
                       <p className="text-[11px] text-slate-600 dark:text-slate-300 italic">
-                        &quot;{cert.retakeFeedback}&quot;
+                        &quot;{cert.retakeFeedback || 'Mentor authorized 1 additional assessment attempt. Review concepts and retry.'}&quot;
                       </p>
                     </div>
                   )}
@@ -579,13 +629,13 @@ export default function CertificatesPage() {
 
                   <div className="flex items-center gap-2">
                     {/* Take / Retake Assessment Button */}
-                    {(cert.status === 'pending_assessment' || cert.status === 'retake_granted') && (
+                    {(cert.status === 'pending_assessment' || cert.status === 'retake_granted' || cert.canRetake) && (
                       <button
                         onClick={() => openAssessmentForCert(cert)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all"
                       >
                         <BrainCircuit className="w-3.5 h-3.5" />
-                        <span>{cert.status === 'retake_granted' ? 'Retake Exam' : 'Take Exam'}</span>
+                        <span>{cert.status === 'retake_granted' || cert.canRetake ? 'Retake Exam (Attempt 2)' : 'Take Exam'}</span>
                       </button>
                     )}
 
