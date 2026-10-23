@@ -49,7 +49,7 @@ export default function HomePage() {
         <h1 className="text-3xl sm:text-6xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight">
           Resumes show what students claim.{' '}
           <span className="bg-gradient-to-r from-indigo-600 via-sky-500 to-emerald-500 bg-clip-text text-transparent">
-            PathPilot shows what they can prove.
+            YojanaSethu shows what they can prove.
           </span>
         </h1>
 
