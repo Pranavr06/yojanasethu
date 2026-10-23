@@ -229,16 +229,23 @@ npm run start
 
 | Member | Role & Specialization | GitHub | Primary Contributions |
 | :--- | :--- | :--- | :--- |
+| **Preethika Poojary** | 👑 **Team Leader & Placement Transparency Architect** | [@Preethika](https://github.com/preethikapoojary) | Placement Transparency Hub, End-to-End Certificate Assessment & Retake Desk, Drive Eligibility Engine, Release Lead |
 | **Pranav R** | **Lead Full-Stack Architect & Core Platform Engine** | [@Pranavr06](https://github.com/Pranavr06) | Core Next.js 14 App Router, 5-Role RBAC & Supabase SSR Auth, Multi-Page Student Hub, CGPA Simulator, Storage Engine |
 | **Prathwik Shetty** | **Student Intelligence & Conversational AI Lead** | [@prathwik-shetty](https://github.com/prathwik-shetty) | AI Voice Mock Interview Assistant, Real-Time Audio Assessment, Student Dashboard UI Layouts, Build Pipeline |
-| **Preethika Poojary** | **Placement Transparency & Verification Workflow Lead** | [@Preethika](https://github.com/preethikapoojary) | Placement Transparency Hub, End-to-End Certificate Assessment, Drive Calendar & Eligibility Auditing, Retake Desk |
 | **Prajwala Gouda** | **Recruiter Talent Portal & Candidate Intelligence Lead** | [@prajwalagouda](https://github.com/prajwalagouda) | Recruiter Talent Pipeline, Candidate Ranking & Profile Inspection Modal, Database Schemas, Cutoff Filter Engine |
 
 ---
 
 ### 🔬 Detailed Contribution Analysis (Based on Git History)
 
-#### 1. **Pranav R** — *Lead Full-Stack Architect & Core Platform Engine*
+#### 1. **Preethika Poojary** — 👑 *Team Leader & Placement Transparency Architect*
+* **Team Leadership & Project Direction**: Orchestrated team sprint deliverables, PR reviews, release merges, and cross-module architecture for Nexathon 2026.
+* **Placement Transparency Hub** (`/student/placement-hub` & `/placement`): Spearheaded the campus placement transparency system featuring live drive calendars, official announcements, cutoff criteria, and eligibility auditing.
+* **End-to-End Certificate Assessment Workflow**: Architected the complete certificate verification and automated assessment pipeline, featuring attempt tracking, objective evaluation questions, and faculty retake authorization desks.
+* **Eligibility & Cutoff Verification**: Built deterministic academic cutoff filters cross-referencing live student SGPA/CGPA with company recruitment criteria.
+* **Release & Branch Synchronization**: Managed placement dashboard feature branches, PR integrations (`#5`, `#9`, `#15`), and database type alignments.
+
+#### 2. **Pranav R** — *Lead Full-Stack Architect & Core Platform Engine*
 * **Core Architecture & Routing**: Engineered the Next.js 14 App Router architecture, server-side data access layer (`src/lib/db.ts`), and unified responsive layout shell (`AppShell.tsx` and `Sidebar.tsx`).
 * **5-Role RBAC & Supabase Auth**: Built the authentication ecosystem with cookie-based SSR sessions (`@supabase/ssr`), role-protected Next.js middleware, password recovery, and login persona validation against server-side role spoofing.
 * **Student Multi-Page Modularization**: Converted in-page monolithic dashboard tabs into standalone App Router routes:
@@ -250,17 +257,11 @@ npm run start
   * **Historical Placement Analytics** (`/student/placement-history`): Campus compensation benchmarks and department statistics.
 * **Storage Resilience & UI Polish**: Implemented automatic Supabase storage bucket creation (`documents`), multi-format credential upload (PDF/PNG/JPG/WebP), theme switcher class synchronization, and notification center cleanups.
 
-#### 2. **Prathwik Shetty** — *Student Intelligence & Conversational AI Lead*
+#### 3. **Prathwik Shetty** — *Student Intelligence & Conversational AI Lead*
 * **AI Voice Mock Interview Assistant** (`/student/mock-interview`): Developed the conversational voice mock interview assistant enabling students to simulate technical and behavioral campus placement interviews.
 * **Multi-Metric Scoring Scorecard**: Implemented real-time audio evaluation with structured scorecards covering communication clarity, technical depth, and interview confidence.
 * **Student Dashboard Foundations**: Built the initial student career portal layouts, component structures, and modularized navigation links.
 * **Build Engineering & Integration**: Configured TypeScript path aliases (`baseUrl`), handled Next.js 404 error boundaries, resolved complex cross-branch merge conflicts, and streamlined session controls.
-
-#### 3. **Preethika Poojary** — *Placement Transparency & Verification Workflow Lead*
-* **Placement Transparency Hub** (`/student/placement-hub` & `/placement`): Spearheaded the campus placement transparency system featuring live drive calendars, official announcements, cutoff criteria, and eligibility auditing.
-* **End-to-End Certificate Assessment Workflow**: Architected the complete certificate verification and automated assessment pipeline, featuring attempt tracking, objective evaluation questions, and faculty retake authorization desks.
-* **Eligibility & Cutoff Verification**: Built deterministic academic cutoff filters cross-referencing live student SGPA/CGPA with company recruitment criteria.
-* **Release & Branch Synchronization**: Managed placement dashboard feature branches, PR integrations (`#5`, `#9`, `#15`), and database type alignments.
 
 #### 4. **Prajwala Gouda** — *Recruiter Talent Portal & Candidate Intelligence Lead*
 * **Recruiter Talent Discovery Pipeline** (`/recruiter` & `/recruiter/dashboard`): Designed the talent scouting desk allowing corporate recruiters to post jobs, search ranked candidates, and manage campus pipelines.
