@@ -7,7 +7,7 @@ import {
   BriefcaseBusiness, GraduationCap, Menu, X, Upload,
   Trash2, Search, Target, BookOpen, Sparkles, CheckCircle2,
   ArrowRight, Download, Briefcase, ShieldCheck, Calculator,
-  Calendar, ExternalLink, LogOut,
+  Calendar, ExternalLink, LogOut, Bot, Mic, Volume2, BarChart3,
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/lib/authContext";
@@ -39,6 +39,7 @@ const topics = [
 const nav = [
   { id: "overview", label: "Dashboard", icon: LayoutDashboard },
   { id: "resume", label: "Resume Builder", icon: FileText },
+  { id: "mock-interview", label: "AI Mock Interview", icon: Bot },
   { id: "coach", label: "AI Career Coach", icon: BrainCircuit },
   { id: "learn", label: "Learn Programming", icon: BookOpen },
   { id: "dsa", label: "DSA Tracker", icon: Code2 },
@@ -153,6 +154,10 @@ export default function StudentDashboard() {
             </Link>
             <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/placement-hub">
               Placement Hub
+            </Link>
+            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50 text-purple-600 font-semibold flex items-center justify-between" href="/student/mock-interview">
+              <span>AI Voice Interviewer</span>
+              <span className="text-[9px] bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full font-bold">Voice AI</span>
             </Link>
             <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50 text-indigo-600 font-medium" href="/login">
               Switch Persona / Login
@@ -385,7 +390,107 @@ export default function StudentDashboard() {
             </div>
           </section>
 
-<section id="coach" className="scroll-mt-24">
+<section id="mock-interview" className="scroll-mt-24">
+            <div className="rounded-3xl border border-purple-200 dark:border-purple-800/60 bg-gradient-to-br from-purple-50 via-white to-indigo-50/40 dark:from-purple-950/20 dark:via-slate-900 dark:to-indigo-950/20 p-6 sm:p-8 shadow-sm space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-500/25 shrink-0">
+                    <Bot className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+                        Conversational Voice AI
+                      </span>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">READY</span>
+                    </div>
+                    <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+                      AI Mock Interviewer & Voice Assistant
+                    </h2>
+                  </div>
+                </div>
+
+                <Link
+                  href="/student/mock-interview"
+                  className="px-6 py-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-purple-600/25 transition-all hover:scale-105 shrink-0"
+                >
+                  <Mic className="w-4 h-4" />
+                  <span>Launch Voice Interview Desk</span>
+                  <ArrowRight className="w-4 h-4" />
+                </Link>
+              </div>
+
+              <p className="text-sm text-slate-600 dark:text-slate-400 max-w-2xl leading-relaxed">
+                Practice simulated placement interviews with NexusAI. The voice assistant speaks technical and behavioral questions out loud, evaluates your live microphone responses, and generates an instant 4-dimensional scorecard (Technical Depth, Communication, Confidence, and STAR structure).
+              </p>
+
+              {/* 4 Feature Cards */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Code2 className="w-4 h-4 text-indigo-500" />
+                    Full-Stack & SDE
+                  </div>
+                  <p className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    System design, optimistic concurrency, React 18, and DB indexing.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <BrainCircuit className="w-4 h-4 text-purple-500" />
+                    AI & Machine Learning
+                  </div>
+                  <p className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    Transformer self-attention, LoRA fine-tuning, and drift mitigation.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <BarChart3 className="w-4 h-4 text-blue-500" />
+                    Data & BI Analytics
+                  </div>
+                  <p className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    SQL window functions, cohort retention, and root cause funnels.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Briefcase className="w-4 h-4 text-amber-500" />
+                    Placement HR Round
+                  </div>
+                  <p className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    STAR situational technique, deadline management, and leadership.
+                  </p>
+                </div>
+              </div>
+
+              {/* Quick Trial Card */}
+              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-purple-200/80 dark:border-purple-800/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <div className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Volume2 className="w-4 h-4 text-purple-600" />
+                    Interactive Speech-To-Text Audio Simulator
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Includes real-time voice synthesis, microphone capture, and sample answers for instant demo evaluation.
+                  </p>
+                </div>
+
+                <Link
+                  href="/student/mock-interview"
+                  className="px-5 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-semibold text-xs hover:bg-indigo-100 transition-colors shrink-0"
+                >
+                  Start Demo Interview &rarr;
+                </Link>
+              </div>
+            </div>
+          </section>
+
+          <section id="coach" className="scroll-mt-24">
             <div className={cardClass}>
               <BrainCircuit size={28} className="text-indigo-600" />
               <h2 className="mt-3 text-2xl font-extrabold">AI Career Coach</h2>

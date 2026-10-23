@@ -26,6 +26,7 @@ import {
   Database,
   Radio,
   FileCheck2,
+  Bot,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -215,6 +216,22 @@ export default function Sidebar({
                 >
                   <Briefcase className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                   <span>Placement Transparency Hub</span>
+                </Link>
+
+                <Link
+                  href="/student/mock-interview"
+                  onClick={onClose}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.startsWith('/student/mock-interview')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
+                >
+                  <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  <span className="flex-1">AI Mock Interview</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                    Voice AI
+                  </span>
                 </Link>
               </div>
             </div>
