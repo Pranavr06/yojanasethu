@@ -428,7 +428,7 @@ export default function DSATrackerPage() {
         {/* Global Progress Pill & Skill Gap Action */}
         <div className="flex flex-wrap items-center gap-3">
           <Link
-            href="/student/career-coach"
+            href="/student/skill-gap"
             className="flex items-center gap-2 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 p-2.5 px-4 rounded-2xl text-xs font-bold transition-all shadow-sm"
           >
             <BrainCircuit className="w-4 h-4 text-purple-600 dark:text-purple-400" />
