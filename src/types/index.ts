@@ -5,9 +5,25 @@
 
 export type UserRole = 'student' | 'faculty' | 'recruiter' | 'placement' | 'admin';
 export type VerificationStatus = 'pending' | 'under_review' | 'verified' | 'rejected';
-export type EvidenceType = 'github_repo' | 'live_project' | 'assessment' | 'certificate';
-export type EvidenceTier = 'self_declared' | 'evidenced' | 'expert';
+export type EvidenceType = 'project' | 'certificate' | 'internship' | 'hackathon' | 'github_repo' | 'live_project' | 'assessment';
+export type EvidenceTier = 'self_declared' | 'evidenced' | 'expert' | 'faculty_verified';
 export type ApplicationStage = 'applied' | 'shortlisted' | 'interview_scheduled' | 'selected' | 'rejected';
+
+export interface AcademicCorrectionRequest {
+  id: string;
+  student_id: string;
+  subject_or_semester: string;
+  claimed_value: string;
+  official_value: string;
+  reason: string;
+  status: 'pending' | 'under_review' | 'resolved' | 'rejected';
+  submitted_at: string;
+  resolved_at?: string | null;
+  admin_notes?: string | null;
+  student_name?: string;
+  student_usn?: string;
+  student_branch?: string;
+}
 
 export interface PlacementStats {
   total_companies: number;
