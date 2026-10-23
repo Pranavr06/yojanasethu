@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/authContext';
 import {
@@ -25,10 +25,13 @@ import {
   Clock,
   Radio,
   FileSearch,
+  Bot,
+  Mic,
+  LogOut,
 } from 'lucide-react';
 
 export default function StudentDashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [studentName, setStudentName] = useState(user?.full_name || 'Pranav R');
   const [usn, setUsn] = useState(user?.usn || '4NM22CS120');
 
@@ -71,21 +74,40 @@ export default function StudentDashboard() {
       {/* Hero Welcome Banner */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-violet-700 p-6 sm:p-10 text-white shadow-xl">
         <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md border border-white/20">
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Autonomous Contineo ERP Connected · NMAMIT 2026</span>
+          <div className="flex items-center justify-between">
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md border border-white/20">
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Autonomous Contineo ERP Connected · NMAMIT 2026</span>
+            </div>
+
+            <button
+              onClick={() => logout()}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-semibold text-white transition-all backdrop-blur-sm"
+              title="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5 text-rose-300" />
+              <span>Sign Out</span>
+            </button>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
-            Welcome back, {studentName}!
+            Welcome back, {user?.full_name || studentName}!
           </h1>
 
           <p className="text-sm sm:text-base text-indigo-100 leading-relaxed max-w-2xl">
             Your evidence-backed student career portal. Access your verified Contineo academic records,
-            practice DSA interview patterns, generate ATS resumes, and track campus placement drives.
+            practice AI voice interviews, train DSA patterns, generate ATS resumes, and track campus placement drives.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Link
+              href="/student/mock-interview"
+              className="inline-flex items-center gap-2 rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all hover:scale-105"
+            >
+              <Bot className="w-4 h-4" />
+              <span>Voice AI Mock Interview</span>
+            </Link>
+
             <Link
               href="/student/resume-builder"
               className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-indigo-700 shadow-md hover:bg-indigo-50 transition-all"
@@ -266,7 +288,35 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 4. Certificates */}
+          {/* 4. AI Voice Mock Interview (NEW) */}
+          <Link
+            href="/student/mock-interview"
+            className="rounded-2xl border border-purple-200/90 dark:border-purple-800/60 bg-gradient-to-br from-purple-50/50 via-white to-indigo-50/30 dark:from-purple-950/20 dark:via-slate-900 dark:to-indigo-950/20 p-5 shadow-sm hover:border-purple-500/60 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-colors shadow-sm">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                  Voice AI
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors flex items-center gap-1.5">
+                <span>AI Mock Interview</span>
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Practice voice-enabled technical & HR interview rounds with speech synthesis, microphone recognition, and live scoring.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-purple-100 dark:border-purple-900/50 flex items-center justify-between text-xs text-purple-600 dark:text-purple-400 font-semibold">
+              <span>Start Voice Interview</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 5. Certificates */}
           <Link
             href="/student/certificates"
             className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
@@ -293,7 +343,7 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 5. AI Career Coach */}
+          {/* 6. AI Career Coach */}
           <Link
             href="/student/career-coach"
             className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
@@ -320,7 +370,7 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 6. Career Roadmap */}
+          {/* 7. Career Roadmap */}
           <Link
             href="/student/roadmap"
             className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
@@ -347,7 +397,7 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 7. Resume Builder */}
+          {/* 8. Resume Builder */}
           <Link
             href="/student/resume-builder"
             className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
@@ -374,7 +424,7 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 8. DSA Tracker */}
+          {/* 9. DSA Tracker */}
           <Link
             href="/student/dsa-tracker"
             className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
@@ -401,7 +451,7 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 9. Learn Programming */}
+          {/* 10. Learn Programming */}
           <Link
             href="/student/learn-programming"
             className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
@@ -428,7 +478,7 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 10. Placement Hub */}
+          {/* 11. Placement Hub */}
           <Link
             href="/student/placement-hub"
             className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
@@ -455,7 +505,7 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 11. Placement History */}
+          {/* 12. Placement History */}
           <Link
             href="/student/placement-history"
             className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
