@@ -1,6 +1,23 @@
 -- Migration: 20261023_certificate_assessment_workflow.sql
 -- Description: Complete Certificate Assessment, Scoring, Mentor Verification Desk, and Retake Schema
 
+-- 0. Extend verification_status_enum safely if it exists as an enum
+DO $$
+BEGIN
+  ALTER TYPE public.verification_status_enum ADD VALUE IF NOT EXISTS 'retake_granted';
+EXCEPTION
+  WHEN duplicate_object THEN null;
+  WHEN undefined_object THEN null;
+END $$;
+
+DO $$
+BEGIN
+  ALTER TYPE public.verification_status_enum ADD VALUE IF NOT EXISTS 'pending_assessment';
+EXCEPTION
+  WHEN duplicate_object THEN null;
+  WHEN undefined_object THEN null;
+END $$;
+
 -- 1. Extend evidence_submissions with assessment and retake audit tracking
 ALTER TABLE IF EXISTS public.evidence_submissions
   ADD COLUMN IF NOT EXISTS subject TEXT,
@@ -76,3 +93,6 @@ CREATE POLICY "Mentors and admins can view all assessments"
       AND ur.role IN ('mentor', 'faculty', 'admin')
     )
   );
+
+-- 7. Reload schema cache in PostgREST so Supabase recognizes new columns immediately
+NOTIFY pgrst, 'reload schema';
