@@ -342,7 +342,10 @@ async function callGeminiAnalysis(params: {
 }): Promise<ResumeAnalysisResult | null> {
   const { geminiKey, student, drive, resumeText, roleTitle, companyName } = params;
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
+  const candidateModels = ['gemini-3.5-flash-lite', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest'];
+  let rawText: string | null = null;
+  let successfulModel: string = 'gemini-3.5-flash-lite';
+  let lastError: any = null;
 
   const prompt = `You are an expert technical recruitment analyst for Indian autonomous engineering colleges.
 Analyze the following candidate's resume and academic profile against the job requirements for "${roleTitle}" at "${companyName}".
@@ -395,19 +398,33 @@ match_summary ({ match_score (number 0-100), scoring_criteria (string), alignmen
     },
   };
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  for (const model of candidateModels) {
+    try {
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiKey}`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Gemini API HTTP ${response.status}: ${errText}`);
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Model ${model} HTTP ${response.status}: ${errText}`);
+      }
+
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) throw new Error(`Model ${model} returned empty content`);
+
+      rawText = text;
+      successfulModel = model;
+      break;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`Resume candidate model attempt failed (${model}):`, err.message);
+    }
   }
 
-  const data = await response.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!rawText) return null;
 
   const parsed = JSON.parse(rawText);
@@ -415,7 +432,7 @@ match_summary ({ match_score (number 0-100), scoring_criteria (string), alignmen
   return {
     ai_provider: 'gemini',
     ai_status: 'gemini_live',
-    provider_note: 'Analysis generated using Google Gemini API against candidate resume and drive criteria.',
+    provider_note: `Analysis generated live using Google Gemini AI (model: ${successfulModel}) against candidate resume and drive criteria.`,
     target_role: roleTitle,
     company_name: companyName,
     ...parsed,
