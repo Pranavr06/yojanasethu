@@ -553,7 +553,7 @@ export default function ResumeBuilderPage() {
 
             {/* Bottom Proof Watermark */}
             <div className="mt-8 pt-4 border-t border-slate-100 dark:border-slate-800 text-center text-[10px] text-slate-400">
-              Verified by YojanaSethu Autonomous Contineo ERP Gateway · NMAMIT 2026
+              Verified by YojanaSethu Career Gateway · NMAMIT 2026
             </div>
           </div>
         </div>
