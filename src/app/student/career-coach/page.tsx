@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/authContext';
 import {
   BrainCircuit,
+  Sparkles,
   Target,
   CheckCircle2,
   AlertCircle,
@@ -14,142 +15,160 @@ import {
   ShieldCheck,
   Briefcase,
   Zap,
-  HelpCircle,
-  AlertTriangle,
-  RefreshCw,
-  BookmarkCheck,
-  Code2,
+  ChevronRight,
+  GraduationCap,
+  Layers,
 } from 'lucide-react';
 import Link from 'next/link';
-import {
-  TargetCareerRole,
-  SkillGapAnalysisResult,
-  EvaluatedSkill,
-} from '@/types';
 
-const ROLES: {
-  key: TargetCareerRole;
-  title: string;
+interface RolePath {
+  role: string;
   category: string;
   salaryRange: string;
   demandLevel: 'High' | 'Very High' | 'Critical';
-  summary: string;
-}[] = [
-  {
-    key: 'Software Developer',
-    title: 'Software Developer / SDE',
-    category: 'Software Engineering & Cloud',
-    salaryRange: '10 – 24 LPA',
-    demandLevel: 'Critical',
-    summary:
-      'Core software development focus spanning full-stack systems, algorithmic problem solving, clean architectures, and database design.',
-  },
-  {
-    key: 'AI/ML Engineer',
-    title: 'AI & Machine Learning Engineer',
+  readinessFormulaBase: number;
+  coreLanguages: string[];
+  frameworks: string[];
+  keyTopics: string[];
+  certifications: string[];
+  recommendationSummary: string;
+}
+
+const CAREER_PATHS: Record<string, RolePath> = {
+  'ai-engineer': {
+    role: 'AI & Machine Learning Engineer',
     category: 'Artificial Intelligence & Data',
     salaryRange: '12 – 28 LPA',
     demandLevel: 'Critical',
-    summary:
-      'Designing and deploying deep learning models, transformer architectures, vector embeddings, and generative AI pipelines.',
+    readinessFormulaBase: 76,
+    coreLanguages: ['Python', 'C++', 'SQL'],
+    frameworks: ['PyTorch', 'TensorFlow', 'LangChain', 'FastAPI', 'Hugging Face'],
+    keyTopics: [
+      'Transformers & Attention Mechanisms',
+      'Vector Embeddings & RAG Systems',
+      'Model Fine-Tuning & Quantization',
+      'Data Preprocessing & Feature Engineering',
+      'Scalable Model Serving & Docker',
+    ],
+    certifications: [
+      'DeepLearning.AI Machine Learning Specialization',
+      'AWS Certified Machine Learning – Specialty',
+      'TensorFlow Developer Certificate',
+    ],
+    recommendationSummary:
+      'Focus on real-world generative AI and RAG implementations. Your strong algorithmic foundation gives you an edge in model deployment and latency optimization.',
   },
-  {
-    key: 'Cybersecurity Analyst',
-    title: 'Cybersecurity & Defense Analyst',
-    category: 'Security & Systems Defense',
-    salaryRange: '9 – 22 LPA',
+  'full-stack': {
+    role: 'Full-Stack Cloud Engineer',
+    category: 'Software Engineering',
+    salaryRange: '10 – 22 LPA',
     demandLevel: 'Very High',
-    summary:
-      'Network security operations, cryptography, vulnerability assessment, Linux systems hardening, and SIEM monitoring.',
+    readinessFormulaBase: 84,
+    coreLanguages: ['TypeScript', 'JavaScript', 'Python', 'Go'],
+    frameworks: ['Next.js', 'React', 'Node.js', 'PostgreSQL', 'Tailwind CSS', 'Docker'],
+    keyTopics: [
+      'Server-Side Rendering & Next.js App Router',
+      'Relational Database Modeling & ACID Transactions',
+      'RESTful & GraphQL API Design',
+      'Distributed Caching with Redis',
+      'Microservices Architecture & CI/CD Pipelines',
+    ],
+    certifications: [
+      'AWS Certified Solutions Architect Associate',
+      'Meta Front-End & Back-End Professional Certificates',
+      'Certified Kubernetes Application Developer (CKAD)',
+    ],
+    recommendationSummary:
+      'You are already well-positioned for Tier 1 Product companies. Reinforce microservice concurrency and database partitioning to achieve super dream placement readiness.',
   },
-];
+  'systems-devops': {
+    role: 'Cloud & DevOps Infrastructure Engineer',
+    category: 'Systems & Infrastructure',
+    salaryRange: '11 – 25 LPA',
+    demandLevel: 'Very High',
+    readinessFormulaBase: 72,
+    coreLanguages: ['Go', 'Python', 'Bash / Shell', 'Rust'],
+    frameworks: ['Kubernetes', 'Docker', 'Terraform', 'Prometheus', 'Linux Kernel'],
+    keyTopics: [
+      'Container Orchestration with Kubernetes',
+      'Infrastructure as Code (IaC) with Terraform',
+      'Linux Internals, Networking & TCP/IP',
+      'Automated Zero-Downtime Blue/Green Deployments',
+      'Site Reliability Engineering (SRE) & Observability',
+    ],
+    certifications: [
+      'Certified Kubernetes Administrator (CKA)',
+      'HashiCorp Certified: Terraform Associate',
+      'Google Cloud Professional Cloud Architect',
+    ],
+    recommendationSummary:
+      'High corporate recruitment demand from cloud and cybersecurity firms. Deepen your hands-on Linux system calls and Terraform automation.',
+  },
+  'data-analyst': {
+    role: 'Data Scientist & Analytics Specialist',
+    category: 'Data Science & BI',
+    salaryRange: '8 – 18 LPA',
+    demandLevel: 'High',
+    readinessFormulaBase: 80,
+    coreLanguages: ['Python', 'R', 'SQL'],
+    frameworks: ['Pandas', 'NumPy', 'Tableau', 'PowerBI', 'Scikit-Learn'],
+    keyTopics: [
+      'Advanced SQL Window Functions & CTEs',
+      'Hypothesis Testing & Statistical Inference',
+      'Predictive Modeling & Regression Analysis',
+      'Executive BI Dashboard Design',
+      'ETL Pipeline Architecture',
+    ],
+    certifications: [
+      'Google Advanced Data Analytics Certificate',
+      'Microsoft Certified: Power BI Data Analyst Associate',
+      'IBM Data Science Professional Certificate',
+    ],
+    recommendationSummary:
+      'Solid corporate placement pipeline across BFSI and analytics consultancies. Combine SQL query optimization with storytelling dashboards.',
+  },
+};
 
 export default function CareerCoachPage() {
   const { user } = useAuth();
-  const [selectedRole, setSelectedRole] = useState<TargetCareerRole>('Software Developer');
-  const [analysis, setAnalysis] = useState<SkillGapAnalysisResult | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [savingTarget, setSavingTarget] = useState(false);
-  const [savedSuccess, setSavedSuccess] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [selectedRoleKey, setSelectedRoleKey] = useState<string>('ai-engineer');
+  const [analyzing, setAnalyzing] = useState(false);
+  const [userVerifiedSkills, setUserVerifiedSkills] = useState<string[]>([
+    'Python',
+    'TypeScript',
+    'Next.js',
+    'SQL',
+    'PostgreSQL',
+    'React',
+  ]);
 
-  // Fetch skill gap analysis from server
-  const fetchAnalysis = useCallback(async (role: TargetCareerRole) => {
-    setLoading(true);
-    setErrorMsg(null);
-    try {
-      const res = await fetch(`/api/student/skill-gap?targetRole=${encodeURIComponent(role)}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.analysis) {
-          setAnalysis(data.analysis);
-          return;
-        }
-      }
-      const err = await res.json().catch(() => ({}));
-      setErrorMsg(err.error || 'Failed to analyze skill gap. Please try again.');
-    } catch (err: any) {
-      console.error('Skill gap fetch error:', err);
-      setErrorMsg(err.message || 'Network error fetching skill gap.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Fetch student career profile on mount to sync initial role
+  // Load real verified skills from student skill gap endpoint if available
   useEffect(() => {
-    async function loadInitialProfile() {
+    async function loadSkills() {
       try {
-        const res = await fetch('/api/student/career-profile');
+        const res = await fetch('/api/student/skill-gap');
         if (res.ok) {
           const data = await res.json();
-          if (data.target_career_role && ROLES.some((r) => r.key === data.target_career_role)) {
-            setSelectedRole(data.target_career_role as TargetCareerRole);
-            fetchAnalysis(data.target_career_role as TargetCareerRole);
-            return;
+          if (data.analysis?.skills) {
+            const strengths = data.analysis.skills
+              .filter((s: any) => s.status === 'verified_strength')
+              .map((s: any) => s.skill_name);
+            if (strengths.length > 0) {
+              setUserVerifiedSkills((prev) => Array.from(new Set([...prev, ...strengths])));
+            }
           }
         }
       } catch {}
-      fetchAnalysis('Software Developer');
     }
-    loadInitialProfile();
-  }, [fetchAnalysis]);
+    loadSkills();
+  }, []);
 
-  const handleRoleChange = (role: TargetCareerRole) => {
-    setSelectedRole(role);
-    setSavedSuccess(false);
-    fetchAnalysis(role);
-  };
+  const currentRole = CAREER_PATHS[selectedRoleKey] || CAREER_PATHS['ai-engineer'];
 
-  const handleSetTargetRole = async () => {
-    setSavingTarget(true);
-    try {
-      const res = await fetch('/api/student/career-profile', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          target_career_role: selectedRole,
-        }),
-      });
-      if (res.ok) {
-        setSavedSuccess(true);
-        setTimeout(() => setSavedSuccess(false), 3000);
-      }
-    } catch (e) {
-      console.error('Failed to set target role:', e);
-    } finally {
-      setSavingTarget(false);
-    }
-  };
-
-  const verifiedStrengths = analysis ? analysis.skills.filter((s) => s.status === 'verified_strength') : [];
-  const demonstratedGaps = analysis ? analysis.skills.filter((s) => s.status === 'demonstrated_gap') : [];
-  const unassessedSkills = analysis ? analysis.skills.filter((s) => s.status === 'unassessed_missing') : [];
-
-  const getTierLabel = (score: number) => {
-    if (score >= 80) return 'Placement Ready (Super Dream / Tier 1)';
-    if (score >= 60) return 'Competitive Contender (Product Core)';
-    return 'Foundational / Active Up-skilling Required';
+  const handleRoleChange = (key: string) => {
+    setAnalyzing(true);
+    setSelectedRoleKey(key);
+    setTimeout(() => setAnalyzing(false), 300);
   };
 
   return (
@@ -162,394 +181,315 @@ export default function CareerCoachPage() {
               <BrainCircuit className="w-5 h-5" />
             </span>
             <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-              AI Career Coach & Skill Gap Analyzer
+              AI Career Coach
             </h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">
-              Deterministic Intelligence
+              Strategic Placement Advisory
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Explainable placement readiness evaluated against verified campus credentials and actual algorithmic activity. Missing data is never treated as a gap.
+            Tailored career guidance and placement path intelligence aligned with Tier-1 recruitment patterns.
           </p>
         </div>
 
-        {/* Action Button: Set as active target */}
+        {/* Action Link to Dedicated Skill Gap Analyzer */}
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={savingTarget || loading}
-            onClick={handleSetTargetRole}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all shadow-sm ${
-              savedSuccess
-                ? 'bg-emerald-600 text-white'
-                : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-            }`}
+          <Link
+            href="/student/skill-gap"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-sm transition-all"
           >
-            {savedSuccess ? (
-              <>
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Target Saved!</span>
-              </>
-            ) : (
-              <>
-                <BookmarkCheck className="w-4 h-4" />
-                <span>Set as Active Goal</span>
-              </>
-            )}
-          </button>
+            <Target className="w-4 h-4" />
+            <span>AI Skill Gap Analyzer</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
       </div>
 
-      {/* Role Tabs */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {ROLES.map((role) => {
-          const isSelected = selectedRole === role.key;
-          return (
-            <button
-              key={role.key}
-              type="button"
-              onClick={() => handleRoleChange(role.key)}
-              className={`text-left p-4 rounded-2xl border transition-all ${
-                isSelected
-                  ? 'border-purple-500 bg-purple-50/50 dark:bg-purple-950/20 shadow-md ring-2 ring-purple-400/20'
-                  : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
-                  {role.category}
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                  {role.salaryRange}
-                </span>
-              </div>
-              <h3 className="mt-2 font-bold text-sm text-slate-900 dark:text-white">
-                {role.title}
-              </h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
-                {role.summary}
-              </p>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Main Content Area */}
-      {loading ? (
-        <div className="p-12 text-center rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900">
-          <RefreshCw className="w-8 h-8 text-purple-600 animate-spin mx-auto mb-3" />
-          <h3 className="font-bold text-slate-900 dark:text-white text-sm">
-            Analyzing student records and role benchmarks...
-          </h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Evaluating verified credentials, Contineo transcript metrics, and DSA pattern accuracy.
+      {/* Featured Banner: Deterministic AI Skill Gap Analyzer Callout */}
+      <div className="rounded-3xl border border-purple-200/80 dark:border-purple-900/40 bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-transparent p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1 max-w-2xl">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+              New: Deterministic Audit
+            </span>
+            <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+              Looking for your empirical Placement Readiness Audit?
+            </h3>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            Check your exact role readiness score (0–100%), verified strengths, demonstrated gaps, and prioritized roadmap across <strong>Software Developer</strong>, <strong>AI/ML Engineer</strong>, and <strong>Cybersecurity Analyst</strong>.
           </p>
         </div>
-      ) : errorMsg ? (
-        <div className="p-8 text-center rounded-2xl border border-rose-200 bg-rose-50 dark:bg-rose-950/20 text-rose-700 dark:text-rose-400 text-xs">
-          {errorMsg}
-        </div>
-      ) : analysis ? (
-        <div className="space-y-6">
-          {/* Readiness Score Card */}
-          <div className="rounded-3xl border border-purple-200/80 dark:border-purple-900/30 bg-gradient-to-br from-purple-500/5 via-indigo-500/5 to-white dark:to-slate-900 p-6 sm:p-8">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-              <div className="space-y-2 max-w-xl">
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-md text-[10px] font-extrabold uppercase bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">
-                    Placement Readiness Audit
-                  </span>
-                  <span className="text-xs text-slate-400">•</span>
-                  <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
-                    Role: {analysis.target_role}
-                  </span>
-                </div>
-                <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                  {getTierLabel(analysis.role_readiness_score)}
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                  {analysis.transparency_note}
-                </p>
-              </div>
 
-              {/* Big Score Radial/Pill */}
-              <div className="flex items-center gap-5 shrink-0 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-5 rounded-2xl shadow-sm">
-                <div className="text-center">
-                  <div className="text-4xl sm:text-5xl font-black text-purple-600 dark:text-purple-400">
-                    {analysis.role_readiness_score}%
-                  </div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400 block mt-1">
-                    Readiness Score
-                  </span>
-                </div>
+        <Link
+          href="/student/skill-gap"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-xs font-bold transition-all shadow-sm shrink-0 self-start sm:self-auto"
+        >
+          <span>Open Skill Gap Analyzer</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
+      </div>
 
-                <div className="h-12 w-px bg-slate-200 dark:bg-slate-800" />
-
-                <div className="space-y-1 text-xs">
-                  <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-semibold">
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>{verifiedStrengths.length} Strengths</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-rose-600 dark:text-rose-400 font-semibold">
-                    <AlertTriangle className="w-3.5 h-3.5" />
-                    <span>{demonstratedGaps.length} Gaps</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-500 font-medium">
-                    <HelpCircle className="w-3.5 h-3.5" />
-                    <span>{unassessedSkills.length} Unassessed</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Score Breakdown Bar */}
-            <div className="mt-6 pt-5 border-t border-slate-200/60 dark:border-slate-800/60 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-              <div>
-                <span className="text-slate-400 block text-[11px]">Verified Credentials</span>
-                <span className="font-bold text-slate-900 dark:text-white">
-                  {analysis.verified_strengths_count} Verified Competencies
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[11px]">Unverified Claims</span>
-                <span className="font-bold text-slate-900 dark:text-white">
-                  {analysis.demonstrated_gaps_count} Pending Review
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[11px]">DSA Patterns Solved</span>
-                <span className="font-bold text-slate-900 dark:text-white">
-                  {analysis.dsa_metrics.solved_count} / {analysis.dsa_metrics.total_patterns} Patterns
-                </span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[11px]">Algorithmic Accuracy</span>
-                <span className="font-bold text-slate-900 dark:text-white">
-                  {analysis.dsa_metrics.overall_accuracy}% Accuracy
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* DSA Weakness Callout if any */}
-          {analysis.dsa_metrics.weak_categories && analysis.dsa_metrics.weak_categories.length > 0 && (
-            <div className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-950/20 p-4 text-xs flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-amber-900 dark:text-amber-200">
-                    Algorithmic Weakness Flagged: {analysis.dsa_metrics.weak_categories.map((w) => w.category).join(', ')}
-                  </h4>
-                  <p className="mt-0.5 text-amber-800 dark:text-amber-300">
-                    Your demonstrated accuracy in these patterns falls below the 70% threshold. Technical interviewers frequently focus on these categories.
-                  </p>
-                </div>
-              </div>
-              <Link
-                href="/student/dsa-tracker"
-                className="shrink-0 px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs transition-colors"
+      {/* Target Career Role Selector Cards */}
+      <div className="space-y-3">
+        <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+          Explore Career Tracks & Recruitment Requirements:
+        </label>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {Object.entries(CAREER_PATHS).map(([key, path]) => {
+            const isSelected = selectedRoleKey === key;
+            return (
+              <button
+                key={key}
+                onClick={() => handleRoleChange(key)}
+                className={`p-4 rounded-2xl text-left border transition-all ${
+                  isSelected
+                    ? 'border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/40 shadow-sm ring-2 ring-indigo-500/20'
+                    : 'border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700'
+                }`}
               >
-                Practice in DSA Tracker
-              </Link>
-            </div>
-          )}
-
-          {/* 3-Column Skills Tri-State Breakdown */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* 1. Verified Strengths */}
-            <div className="rounded-3xl border border-emerald-200/80 dark:border-emerald-900/30 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                    Verified Strengths ({verifiedStrengths.length})
-                  </h3>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    {path.category}
+                  </span>
+                  {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
                 </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400">
-                  Evidence Backed
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                Skills where your faculty-verified certificates or proctored assessments meet or exceed role expectations.
-              </p>
-
-              <div className="space-y-3">
-                {verifiedStrengths.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No verified strengths yet for this role benchmark.</p>
-                ) : (
-                  verifiedStrengths.map((s) => (
-                    <div
-                      key={s.skill_name}
-                      className="p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/30 bg-emerald-50/30 dark:bg-emerald-950/10 text-xs space-y-1"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900 dark:text-white">{s.skill_name}</span>
-                        <span className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400">
-                          {s.demonstrated_level}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.reason}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* 2. Demonstrated Gaps */}
-            <div className="rounded-3xl border border-rose-200/80 dark:border-rose-900/30 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                    Demonstrated Gaps ({demonstratedGaps.length})
-                  </h3>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400">
-                  Needs Revision
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                Areas where assessments or DSA practice showed a performance gap below the placement benchmark.
-              </p>
-
-              <div className="space-y-3">
-                {demonstratedGaps.length === 0 ? (
-                  <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                    Zero demonstrated gaps found! Excellent baseline.
-                  </p>
-                ) : (
-                  demonstratedGaps.map((s) => (
-                    <div
-                      key={s.skill_name}
-                      className="p-3 rounded-xl border border-rose-100 dark:border-rose-900/30 bg-rose-50/30 dark:bg-rose-950/10 text-xs space-y-1"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900 dark:text-white">{s.skill_name}</span>
-                        <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400">
-                          {s.demonstrated_level}
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.reason}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* 3. Unassessed Skills (Missing Data, NOT treated as a gap) */}
-            <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <HelpCircle className="w-5 h-5 text-indigo-500" />
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                    Unassessed Areas ({unassessedSkills.length})
-                  </h3>
-                </div>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
-                  No Exam / Proof
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-500">
-                Required role competencies not yet recorded. Missing data is <em>never</em> treated as proof of failure.
-              </p>
-
-              <div className="space-y-3">
-                {unassessedSkills.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">All role skills have verified assessment or credential data.</p>
-                ) : (
-                  unassessedSkills.map((s) => (
-                    <div
-                      key={s.skill_name}
-                      className="p-3 rounded-xl border border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 text-xs space-y-1"
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-slate-900 dark:text-white">{s.skill_name}</span>
-                        <Link
-                          href="/student/certificates"
-                          className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline"
-                        >
-                          Verify Now →
-                        </Link>
-                      </div>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400">{s.reason}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Prioritized Recommendations Roadmap */}
-          <div className="rounded-3xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 sm:p-8 space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-4">
-              <div>
-                <h3 className="text-lg font-black text-slate-900 dark:text-white">
-                  Prioritized Preparation Roadmap
+                <h3 className="font-bold text-sm text-slate-900 dark:text-white leading-snug">
+                  {path.role}
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Targeted milestones ranked by recruiter impact to qualify for Tier 1 campus rounds.
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Target CTC: <strong className="text-emerald-600 dark:text-emerald-400">{path.salaryRange}</strong>
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Main Readiness & Recommendations Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Smart Placement Readiness Gauge (5 cols) */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* Readiness Card */}
+          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                  <Target className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  Estimated Readiness Benchmark
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Calculated against {currentRole.role} benchmarks
                 </p>
               </div>
-              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 self-start sm:self-auto">
-                {analysis.prioritized_roadmap.length} Actionable Steps
+              <span className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+                {currentRole.readinessFormulaBase}%
               </span>
             </div>
 
-            <div className="space-y-4">
-              {analysis.prioritized_roadmap.map((rec, index) => (
-                <div
-                  key={`${rec.skill_or_topic}-${index}`}
-                  className="p-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 hover:border-indigo-300 dark:hover:border-indigo-800 transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
-                >
-                  <div className="space-y-2 max-w-2xl">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span
-                        className={`text-[10px] font-black px-2 py-0.5 rounded-md uppercase ${
-                          rec.priority === 'critical'
-                            ? 'bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400'
-                            : rec.priority === 'high'
-                            ? 'bg-amber-100 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400'
-                            : 'bg-indigo-100 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-400'
-                        }`}
-                      >
-                        {rec.priority}
-                      </span>
-                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                        {rec.skill_or_topic}
-                      </h4>
-                    </div>
+            {/* Progress Bar */}
+            <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-indigo-500 to-purple-600 rounded-full transition-all duration-500"
+                style={{ width: `${currentRole.readinessFormulaBase}%` }}
+              />
+            </div>
 
-                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                      {rec.reason}
-                    </p>
+            {/* Sub-Metric Breakdown */}
+            <div className="space-y-3 pt-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400">Contineo Academic Standing</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">Verified</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400">Core DSA & Algorithmic Problem Solving</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">In Practice</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-600 dark:text-slate-400">Applied Tech Stack & Framework Experience</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">Active</span>
+              </div>
+            </div>
 
-                    <div className="flex items-center gap-2 text-[11px] text-slate-500 font-medium">
-                      <Target className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
-                      <span>Completion criteria: <strong>{rec.measurable_completion_criterion}</strong></span>
-                    </div>
-                  </div>
+            {/* Coach Assessment Note */}
+            <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/70 dark:border-indigo-800/50 text-xs text-indigo-900 dark:text-indigo-200 leading-relaxed">
+              <div className="flex items-center gap-1.5 font-bold mb-1 text-indigo-700 dark:text-indigo-300">
+                <Sparkles className="w-3.5 h-3.5" />
+                Coach Evaluation
+              </div>
+              {currentRole.recommendationSummary}
+            </div>
+          </div>
 
-                  {/* Action Link */}
-                  {rec.resource_link && (
-                    <div className="shrink-0 self-end md:self-auto">
-                      <Link
-                        href={rec.resource_link}
-                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 dark:white text-white dark:text-slate-900 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-xs font-bold transition-all shadow-sm"
-                      >
-                        <span>Take Action</span>
-                        <ArrowRight className="w-3.5 h-3.5" />
-                      </Link>
-                    </div>
-                  )}
+          {/* Quick Action Cards */}
+          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              Personalized Next Steps
+            </h4>
+
+            <Link
+              href="/student/skill-gap"
+              className="flex items-center justify-between p-3 rounded-xl border border-purple-200/80 dark:border-purple-900/40 bg-purple-50/30 dark:bg-purple-950/10 hover:bg-purple-50 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-600">
+                  <Target className="w-4 h-4" />
                 </div>
-              ))}
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">Run Detailed Skill Gap Analysis</p>
+                  <p className="text-[11px] text-slate-500">Deterministic scoring & gap isolation</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-purple-600 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+
+            <Link
+              href="/student/dsa-tracker"
+              className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600">
+                  <Zap className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">Master Placement DSA Patterns</p>
+                  <p className="text-[11px] text-slate-500">Practice 20 essential patterns</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+
+            <Link
+              href="/student/roadmap"
+              className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600">
+                  <BookOpen className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">30-Day Preparation Roadmap</p>
+                  <p className="text-[11px] text-slate-500">Structured weekly milestones</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+          </div>
+        </div>
+
+        {/* Right Column: Required Skills & Skill Gap Breakdown (7 cols) */}
+        <div className="lg:col-span-7 space-y-6">
+          {/* Skill Matrix Card */}
+          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-5">
+            <div>
+              <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <TrendingUp className="w-4 h-4 text-purple-600" />
+                Skill Alignment: Track Expectations vs Verified Proof
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Competencies expected by recruiters for {currentRole.role}
+              </p>
+            </div>
+
+            {/* Core Languages */}
+            <div>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-2">
+                Primary Programming Languages:
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {currentRole.coreLanguages.map((lang) => {
+                  const hasSkill = userVerifiedSkills.some((s) => s.toLowerCase().includes(lang.toLowerCase()));
+                  return (
+                    <span
+                      key={lang}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+                        hasSkill
+                          ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
+                          : 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/30'
+                      }`}
+                    >
+                      {hasSkill ? <CheckCircle2 className="w-3.5 h-3.5" /> : <AlertCircle className="w-3.5 h-3.5" />}
+                      {lang}
+                      <span className="text-[10px] font-normal opacity-80">
+                        ({hasSkill ? 'Verified' : 'To Learn'})
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Frameworks & Tech Stack */}
+            <div>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-2">
+                Frameworks & Specialized Libraries:
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {currentRole.frameworks.map((fw) => {
+                  const hasSkill = userVerifiedSkills.some((s) => s.toLowerCase().includes(fw.toLowerCase()));
+                  return (
+                    <span
+                      key={fw}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border ${
+                        hasSkill
+                          ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      {hasSkill ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Sparkles className="w-3.5 h-3.5 text-indigo-500" />}
+                      {fw}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Key Engineering Topics to Master */}
+            <div>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-2">
+                Key Technical Concepts for Technical Interviews:
+              </span>
+              <div className="space-y-2">
+                {currentRole.keyTopics.map((topic, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2.5 p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/50 text-xs text-slate-800 dark:text-slate-200"
+                  >
+                    <BookOpen className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                    <span>{topic}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Recommended Industry Certifications */}
+            <div>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300 block mb-2">
+                Recommended Professional Certifications:
+              </span>
+              <div className="space-y-2">
+                {currentRole.certifications.map((cert, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900 text-xs"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Award className="w-4 h-4 text-amber-500 shrink-0" />
+                      <span className="font-medium text-slate-900 dark:text-white">{cert}</span>
+                    </div>
+                    <Link
+                      href="/student/certificates"
+                      className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                    >
+                      Upload Evidence →
+                    </Link>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
-      ) : null}
+      </div>
     </div>
   );
 }

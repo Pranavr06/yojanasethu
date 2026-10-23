@@ -166,7 +166,7 @@ export default function StudentDashboard() {
         </Link>
 
         <Link
-          href="/student/career-coach"
+          href="/student/skill-gap"
           className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-purple-300 dark:hover:border-purple-800 transition-all group"
         >
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
