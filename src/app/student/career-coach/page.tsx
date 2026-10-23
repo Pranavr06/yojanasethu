@@ -184,6 +184,10 @@ export default function UnifiedAcademicCareerCoachPage() {
         body: JSON.stringify({
           message: text,
           studentId,
+          conversationHistory: chatMessages.map((m) => ({
+            role: m.sender === 'user' ? 'user' : 'model',
+            content: m.text,
+          })),
         }),
       });
 
