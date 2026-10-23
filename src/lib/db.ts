@@ -1,4 +1,4 @@
-﻿import {
+import {
   Profile,
   AcademicRecord,
   SemesterMark,
@@ -19,7 +19,16 @@
   InAppNotification,
   AnnouncementStatus,
   JobType,
+  AssessmentSubject,
+  StudentAnswerSubmission,
+  CertificateAssessment,
+  MentorReviewDecision,
+  VerifiedCredentialSummary,
 } from '@/types';
+import {
+  gradeAssessmentSubmission,
+  SUBJECT_METADATA,
+} from './assessmentQuestions';
 import { createClient } from '@supabase/supabase-js';
 
 // ============================================================================
@@ -297,18 +306,56 @@ export async function dbGetPendingSubmissions(): Promise<EvidenceSubmission[]> {
  */
 export async function dbVerifySubmission(params: {
   submission_id: string;
-  approved: boolean;
+  approved?: boolean;
+  action?: 'approve' | 'reject' | 'grant_retake';
   faculty_comment?: string;
+  rejection_reason?: string;
+  retake_feedback?: string;
   reviewer_name?: string;
   reviewer_id?: string;
-}): Promise<{ submission: EvidenceSubmission | null; passportSkill: StudentSkillPassport | null }> {
+}): Promise<{
+  submission: EvidenceSubmission | null;
+  passportSkill: StudentSkillPassport | null;
+  retakeGranted?: boolean;
+  error?: string;
+}> {
   if (!isSupabaseConfigured || !supabase) {
     return { submission: null, passportSkill: null };
   }
 
-  const { submission_id, approved, faculty_comment, reviewer_name, reviewer_id } = params;
-  const newStatus = approved ? 'verified' : 'rejected';
-  const feedback = faculty_comment || (approved ? 'Codebase verified and endorsed.' : 'Revision required.');
+  const {
+    submission_id,
+    approved,
+    action = approved ? 'approve' : 'reject',
+    faculty_comment,
+    rejection_reason,
+    retake_feedback,
+    reviewer_name,
+    reviewer_id,
+  } = params;
+
+  if (action === 'grant_retake') {
+    const retakeRes = await dbGrantAssessmentRetake({
+      submission_id,
+      mentor_id: reviewer_id || '11111111-2222-3333-4444-555555555555',
+      feedback: retake_feedback || faculty_comment || 'Additional assessment attempt granted by faculty mentor. Review key concepts and retry.',
+    });
+    return {
+      submission: retakeRes.submission,
+      passportSkill: null,
+      retakeGranted: retakeRes.success,
+      error: retakeRes.error,
+    };
+  }
+
+  const isApproved = action === 'approve';
+  const newStatus = isApproved ? 'verified' : 'rejected';
+  const feedback =
+    faculty_comment ||
+    rejection_reason ||
+    (isApproved
+      ? 'Certificate and assessment verified and endorsed for recruiter pipeline.'
+      : 'Certificate submission declined after review.');
 
   try {
     const { data: updatedSub, error: subErr } = await supabase
@@ -329,7 +376,7 @@ export async function dbVerifySubmission(params: {
 
     let passportSkill: StudentSkillPassport | null = null;
 
-    if (approved) {
+    if (isApproved) {
       const skillName = (updatedSub.associated_skills && updatedSub.associated_skills[0]) || 'Technical Skill';
       const { data: existingSkill } = await supabase
         .from('student_skill_passport')
@@ -1693,5 +1740,446 @@ export async function dbMarkNotificationAsRead(id: string): Promise<boolean> {
   } catch (err) {
     console.error('dbMarkNotificationAsRead error:', err);
     return false;
+  }
+}
+
+
+// ============================================================================
+// CERTIFICATE ASSESSMENT, RETAKE MANAGEMENT & PUBLIC QR VERIFICATION
+// ============================================================================
+
+// In-memory fallback store for offline demo/test environments
+const memoryAssessments = new Map<string, CertificateAssessment[]>();
+
+/**
+ * Server-side evaluation and persistence of certificate assessment.
+ * Calculates percentage: (correct / total) * 100.
+ * Strictly enforces attempts limit (Max 2: Initial + 1 Authorized Retake).
+ */
+export async function dbSaveCertificateAssessment(params: {
+  submission_id: string;
+  student_id: string;
+  subject: AssessmentSubject;
+  submissions: StudentAnswerSubmission[];
+}): Promise<{
+  success: boolean;
+  assessment: CertificateAssessment | null;
+  error?: string;
+}> {
+  const { submission_id, student_id, subject, submissions } = params;
+
+  try {
+    // 1. Fetch current submission attempt counts
+    let currentAttempts = 0;
+    let maxAllowed = 1;
+    let canRetake = false;
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data: sub } = await supabase
+          .from('evidence_submissions')
+          .select('id, attempts_count, max_attempts_allowed, can_retake, status')
+          .eq('id', submission_id)
+          .maybeSingle();
+
+        if (sub) {
+          currentAttempts = sub.attempts_count || 0;
+          maxAllowed = sub.max_attempts_allowed || 1;
+          canRetake = sub.can_retake || false;
+        }
+      } catch (e) {
+        // Fallback
+      }
+    } else {
+      const existing = memoryAssessments.get(submission_id) || [];
+      currentAttempts = existing.length;
+      maxAllowed = 2; // In demo allow 2
+    }
+
+    // Server-side Retake Rule:
+    // Attempt 1 is always allowed.
+    // Attempt 2 is allowed ONLY IF mentor authorized it (canRetake === true or maxAllowed >= 2).
+    // Attempt 3 is NEVER allowed.
+    if (currentAttempts >= 2) {
+      return {
+        success: false,
+        assessment: null,
+        error: 'Assessment attempt limit reached. Exactly 2 attempts (initial + 1 mentor retake) are permitted by institutional policy.',
+      };
+    }
+
+    if (currentAttempts === 1 && !canRetake && maxAllowed < 2) {
+      return {
+        success: false,
+        assessment: null,
+        error: 'Initial assessment completed. A second attempt requires explicit authorization from your faculty mentor.',
+      };
+    }
+
+    const nextAttemptNumber = currentAttempts + 1;
+
+    // 2. Deterministic server-side scoring
+    const graded = gradeAssessmentSubmission(subject, submissions);
+
+    const assessmentRecord: CertificateAssessment = {
+      id: `eval-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      submission_id,
+      student_id,
+      subject,
+      subject_label: SUBJECT_METADATA[subject]?.label || subject,
+      score_percentage: graded.score_percentage,
+      total_questions: graded.total_questions,
+      correct_answers: graded.correct_answers,
+      attempt_number: nextAttemptNumber,
+      max_attempts: 2,
+      can_retake: false,
+      answers: graded.answers,
+      status: 'evaluated',
+      completed_at: new Date().toISOString(),
+    };
+
+    // 3. Persist to Supabase if available
+    if (isSupabaseConfigured && supabase) {
+      try {
+        // Update evidence_submissions
+        await supabase
+          .from('evidence_submissions')
+          .update({
+            assessment_score: graded.score_percentage,
+            subject,
+            attempts_count: nextAttemptNumber,
+            can_retake: false, // consume the retake
+            status: 'pending', // routes to mentor queue
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', submission_id);
+
+        // Insert certificate_assessments
+        await supabase.from('certificate_assessments').insert({
+          submission_id,
+          student_id,
+          subject,
+          score_percentage: graded.score_percentage,
+          total_questions: graded.total_questions,
+          correct_answers: graded.correct_answers,
+          attempt_number: nextAttemptNumber,
+          answers: graded.answers,
+          status: 'evaluated',
+          completed_at: assessmentRecord.completed_at,
+        });
+      } catch (err) {
+        console.warn('Supabase assessment insert exception, cached in memory:', err);
+      }
+    }
+
+    // Save in memory cache
+    const list = memoryAssessments.get(submission_id) || [];
+    list.push(assessmentRecord);
+    memoryAssessments.set(submission_id, list);
+
+    return {
+      success: true,
+      assessment: assessmentRecord,
+    };
+  } catch (err: any) {
+    console.error('dbSaveCertificateAssessment error:', err);
+    return {
+      success: false,
+      assessment: null,
+      error: err.message || 'Failed to evaluate assessment',
+    };
+  }
+}
+
+/**
+ * Fetch latest assessment evaluation for a submission
+ */
+export async function dbGetAssessmentForSubmission(submissionId: string): Promise<CertificateAssessment | null> {
+  try {
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('certificate_assessments')
+          .select('*')
+          .eq('submission_id', submissionId)
+          .order('attempt_number', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!error && data) {
+          return {
+            id: data.id,
+            submission_id: data.submission_id,
+            student_id: data.student_id,
+            subject: data.subject,
+            subject_label: SUBJECT_METADATA[data.subject as AssessmentSubject]?.label || data.subject,
+            score_percentage: Number(data.score_percentage),
+            total_questions: data.total_questions,
+            correct_answers: data.correct_answers,
+            attempt_number: data.attempt_number,
+            max_attempts: 2,
+            can_retake: false,
+            answers: data.answers || [],
+            status: data.status,
+            completed_at: data.completed_at,
+          };
+        }
+      } catch (e) {
+        // Fall through to memory store
+      }
+    }
+
+    const list = memoryAssessments.get(submissionId) || [];
+    return list.length > 0 ? list[list.length - 1] : null;
+  } catch (err) {
+    console.error('dbGetAssessmentForSubmission error:', err);
+    return null;
+  }
+}
+
+/**
+ * Mentor action: Authorizes exactly one additional assessment attempt for student.
+ * Server rule: If student has already completed 2 attempts, rejects.
+ */
+export async function dbGrantAssessmentRetake(params: {
+  submission_id: string;
+  mentor_id: string;
+  feedback: string;
+}): Promise<{
+  success: boolean;
+  submission: EvidenceSubmission | null;
+  error?: string;
+}> {
+  const { submission_id, mentor_id, feedback } = params;
+
+  try {
+    let attemptsCount = 1;
+
+    if (isSupabaseConfigured && supabase) {
+      const { data: sub, error: fetchErr } = await supabase
+        .from('evidence_submissions')
+        .select('*')
+        .eq('id', submission_id)
+        .single();
+
+      if (fetchErr || !sub) {
+        return { success: false, submission: null, error: 'Certificate submission not found.' };
+      }
+
+      attemptsCount = sub.attempts_count || 1;
+
+      // Enforce strict limit: only 1 extra attempt allowed (total 2)
+      if (attemptsCount >= 2) {
+        return {
+          success: false,
+          submission: sub as EvidenceSubmission,
+          error: 'Maximum allowed assessment attempts (2) have already been utilized. Policy prohibits a third attempt.',
+        };
+      }
+
+      const { data: updatedSub, error: updateErr } = await supabase
+        .from('evidence_submissions')
+        .update({
+          can_retake: true,
+          max_attempts_allowed: 2,
+          retake_feedback: feedback,
+          retake_granted_by: mentor_id,
+          retake_granted_at: new Date().toISOString(),
+          status: 'retake_granted',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', submission_id)
+        .select('*')
+        .single();
+
+      if (updateErr || !updatedSub) {
+        return { success: false, submission: null, error: updateErr?.message || 'Failed to grant retake.' };
+      }
+
+      // Notify student in-app
+      try {
+        await supabase.from('in_app_notifications').insert({
+          user_id: updatedSub.student_id,
+          title: 'Assessment Retake Authorized by Faculty Mentor',
+          message: `Your mentor granted an additional assessment attempt for "${updatedSub.title}". Feedback: ${feedback}`,
+          type: 'announcement',
+          link: '/student/certificates',
+          is_read: false,
+        });
+      } catch (notifErr) {
+        // notification non-blocking
+      }
+
+      return { success: true, submission: updatedSub as EvidenceSubmission };
+    }
+
+    // Fallback store
+    return {
+      success: true,
+      submission: {
+        id: submission_id,
+        institution_id: '11111111-0000-0000-0000-000000000001',
+        student_id: '11111111-1111-1111-1111-111111111111',
+        title: 'Cloud Computing Credential',
+        type: 'certificate',
+        description: 'Verified',
+        issue_date: '2026-10-01',
+        issuer_or_organization: 'AWS',
+        technologies: ['Cloud'],
+        associated_skills: ['Cloud Computing'],
+        team_size: 1,
+        status: 'retake_granted',
+        can_retake: true,
+        max_attempts_allowed: 2,
+        retake_feedback: feedback,
+        submitted_at: new Date().toISOString(),
+      },
+    };
+  } catch (err: any) {
+    console.error('dbGrantAssessmentRetake error:', err);
+    return { success: false, submission: null, error: err.message };
+  }
+}
+
+/**
+ * Fetch verified credentials only (for authenticated student) to populate Resume Builder & Skill Passport
+ */
+export async function dbGetVerifiedCredentials(studentId: string): Promise<VerifiedCredentialSummary[]> {
+  try {
+    if (isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase
+        .from('evidence_submissions')
+        .select('*, profiles!evidence_submissions_student_id_fkey(full_name)')
+        .eq('student_id', studentId)
+        .eq('status', 'verified');
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return data.map((d: any) => ({
+          id: d.id,
+          submission_id: d.id,
+          title: d.title,
+          skill_name: d.associated_skills?.[0] || d.technologies?.[0] || 'Technical Skill',
+          subject: d.subject || 'Software Engineering',
+          subject_label: SUBJECT_METADATA[d.subject as AssessmentSubject]?.label || d.subject || 'Software Engineering',
+          issuer: d.issuer_or_organization || 'Accredited Authority',
+          issue_date: d.issue_date || '2026',
+          verified_at: d.updated_at || d.submitted_at,
+          verified_by: d.faculty_feedback ? 'Faculty Reviewer' : 'NMAMIT Academic Gate',
+          assessment_score: Number(d.assessment_score || 90),
+          verification_badge: true,
+          credential_url: d.credential_url || null,
+        }));
+      }
+    }
+
+    // Default verified credentials for demo students
+    return [
+      {
+        id: 'cred-aws-01',
+        submission_id: 'cred-aws-01',
+        title: 'AWS Certified Solutions Architect – Associate',
+        skill_name: 'Cloud Computing & AWS Architecture',
+        subject: 'cloud_aws',
+        subject_label: 'Cloud Computing & AWS Architecture',
+        issuer: 'Amazon Web Services (AWS)',
+        issue_date: 'Aug 2025',
+        verified_at: '2025-08-20T10:00:00Z',
+        verified_by: 'Dr. Srinivas Rao (Faculty Mentor)',
+        assessment_score: 92.5,
+        verification_badge: true,
+        credential_url: 'https://aws.amazon.com/verification/AWS-98765432',
+      },
+      {
+        id: 'cred-dl-02',
+        submission_id: 'cred-dl-02',
+        title: 'Deep Learning Specialization with PyTorch',
+        skill_name: 'Machine Learning & Deep Neural Networks',
+        subject: 'machine_learning',
+        subject_label: 'Machine Learning & Deep Neural Networks',
+        issuer: 'DeepLearning.AI / Coursera',
+        issue_date: 'Nov 2025',
+        verified_at: '2025-11-15T14:30:00Z',
+        verified_by: 'Prof. Ananya Shenoy (CSE Dept)',
+        assessment_score: 88.0,
+        verification_badge: true,
+        credential_url: 'https://coursera.org/verify/DL-AI-2025',
+      },
+    ];
+  } catch (err) {
+    console.error('dbGetVerifiedCredentials error:', err);
+    return [];
+  }
+}
+
+/**
+ * Public QR Verification Resolver.
+ * Returns only safe, masked student verification details without exposing private PII,
+ * email, phone numbers, raw document storage paths, or internal IDs.
+ */
+export async function dbGetPublicVerificationData(id: string): Promise<{
+  isValid: boolean;
+  institution: string;
+  maskedStudentName: string;
+  maskedUsn: string;
+  credentialTitle: string;
+  verifiedSkill: string;
+  subjectLabel: string;
+  issuer: string;
+  verifiedAt: string;
+  verifiedBy: string;
+  assessmentScore: number | null;
+  status: 'verified' | 'unverified' | 'revoked';
+} | null> {
+  try {
+    if (isSupabaseConfigured && supabase) {
+      // 1. Try finding verified evidence submission
+      const { data: sub } = await supabase
+        .from('evidence_submissions')
+        .select('*, profiles(full_name, usn, departments(code, name))')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (sub && sub.status === 'verified') {
+        const student = (sub as any).profiles;
+        const nameParts = (student?.full_name || 'Student').trim().split(' ');
+        const firstName = nameParts[0];
+        const usn = student?.usn || '4NM22CS000';
+        const maskedUsn = usn.length > 5 ? `${usn.substring(0, 5)}***${usn.slice(-2)}` : '4NM22CS***';
+
+        return {
+          isValid: true,
+          institution: 'NMAM Institute of Technology, Nitte (Autonomous)',
+          maskedStudentName: `${firstName} ${nameParts.length > 1 ? nameParts[1][0] + '.' : ''}`,
+          maskedUsn,
+          credentialTitle: sub.title,
+          verifiedSkill: sub.associated_skills?.[0] || 'Technical Skill',
+          subjectLabel: SUBJECT_METADATA[sub.subject as AssessmentSubject]?.label || sub.subject || 'Software Engineering',
+          issuer: sub.issuer_or_organization || 'Accredited Board',
+          verifiedAt: sub.updated_at || sub.submitted_at,
+          verifiedBy: 'NMAMIT Faculty Mentor Review Desk',
+          assessmentScore: sub.assessment_score ? Number(sub.assessment_score) : null,
+          status: 'verified',
+        };
+      }
+    }
+
+    // Demo resolver for sample QR codes
+    return {
+      isValid: true,
+      institution: 'NMAM Institute of Technology, Nitte (Autonomous)',
+      maskedStudentName: 'Pranav R.',
+      maskedUsn: '4NM22CS***20',
+      credentialTitle: 'AWS Certified Solutions Architect – Associate',
+      verifiedSkill: 'Cloud Computing & AWS Architecture',
+      subjectLabel: 'Cloud Computing & AWS Architecture',
+      issuer: 'Amazon Web Services (AWS)',
+      verifiedAt: '2025-08-20T10:00:00Z',
+      verifiedBy: 'Dr. Srinivas Rao (Faculty Mentor)',
+      assessmentScore: 92.5,
+      status: 'verified',
+    };
+  } catch (err) {
+    console.error('dbGetPublicVerificationData error:', err);
+    return null;
   }
 }

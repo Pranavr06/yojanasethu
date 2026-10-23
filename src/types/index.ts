@@ -4,7 +4,7 @@
 // ========================================================
 
 export type UserRole = 'student' | 'faculty' | 'mentor' | 'recruiter' | 'placement' | 'placements' | 'admin';
-export type VerificationStatus = 'pending' | 'under_review' | 'verified' | 'rejected';
+export type VerificationStatus = 'pending' | 'under_review' | 'verified' | 'rejected' | 'pending_assessment' | 'retake_granted';
 export type EvidenceType = 'project' | 'certificate' | 'internship' | 'hackathon' | 'github_repo' | 'live_project' | 'assessment';
 export type EvidenceTier = 'self_declared' | 'evidenced' | 'expert' | 'faculty_verified';
 export type ApplicationStage = 'applied' | 'shortlisted' | 'interview_scheduled' | 'selected' | 'rejected';
@@ -23,6 +23,15 @@ export interface AcademicCorrectionRequest {
   student_name?: string;
   student_usn?: string;
   student_branch?: string;
+  subject?: string | null;
+  assessment_score?: number | null;
+  attempts_count?: number;
+  max_attempts_allowed?: number;
+  can_retake?: boolean;
+  retake_feedback?: string | null;
+  retake_granted_by?: string | null;
+  retake_granted_at?: string | null;
+  latest_assessment?: CertificateAssessment | null;
 }
 
 export interface PlacementStats {
@@ -156,6 +165,15 @@ export interface EvidenceSubmission {
   student_name?: string;
   student_usn?: string;
   student_branch?: string;
+  subject?: string | null;
+  assessment_score?: number | null;
+  attempts_count?: number;
+  max_attempts_allowed?: number;
+  can_retake?: boolean;
+  retake_feedback?: string | null;
+  retake_granted_by?: string | null;
+  retake_granted_at?: string | null;
+  latest_assessment?: CertificateAssessment | null;
 }
 
 export interface VerificationReview {
@@ -403,4 +421,88 @@ export interface HistoricalPlacementStats {
     average_package_lpa: number;
   }[];
   top_recruiters: HistoricalRecruiterRecord[];
+}
+
+// ============================================================================
+// CERTIFICATE ASSESSMENT, VERIFICATION DESK & QR PASSPORT TYPES
+// ============================================================================
+
+export type AssessmentSubject =
+  | 'python'
+  | 'dsa'
+  | 'cloud_aws'
+  | 'machine_learning'
+  | 'sql_databases'
+  | 'web_development'
+  | 'cybersecurity'
+  | 'devops';
+
+export interface AssessmentQuestion {
+  id: string;
+  subject: AssessmentSubject;
+  question: string;
+  options: string[];
+}
+
+export interface AssessmentQuestionServer extends AssessmentQuestion {
+  correctOptionIndex: number;
+  explanation: string;
+  gradingRationale: string;
+}
+
+export interface StudentAnswerSubmission {
+  questionId: string;
+  selectedOptionIndex: number;
+}
+
+export interface GradedQuestionResult {
+  questionId: string;
+  questionText: string;
+  options: string[];
+  selectedOptionIndex: number;
+  correctOptionIndex: number;
+  isCorrect: boolean;
+  explanation: string;
+}
+
+export interface CertificateAssessment {
+  id: string;
+  submission_id: string;
+  student_id: string;
+  subject: string;
+  subject_label: string;
+  score_percentage: number;
+  total_questions: number;
+  correct_answers: number;
+  attempt_number: number;
+  max_attempts: number;
+  can_retake: boolean;
+  answers: GradedQuestionResult[];
+  status: 'submitted' | 'evaluated';
+  completed_at: string;
+}
+
+export interface MentorReviewDecision {
+  submission_id: string;
+  action: 'approve' | 'reject' | 'grant_retake';
+  rejection_reason?: string;
+  retake_feedback?: string;
+  reviewer_name?: string;
+  reviewer_id?: string;
+}
+
+export interface VerifiedCredentialSummary {
+  id: string;
+  submission_id?: string;
+  title: string;
+  skill_name: string;
+  subject: string;
+  subject_label?: string;
+  issuer: string;
+  issue_date: string;
+  verified_at: string;
+  verified_by: string;
+  assessment_score: number;
+  verification_badge: boolean;
+  credential_url?: string | null;
 }
