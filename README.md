@@ -1,2 +1,2 @@
-# yojanasethu
-yojanasethu turns student potential into placement readiness by mapping verified skills, identifying career gaps, and building personalized pathways to success.
+# pathpilot-test
+AI-powered student career-readiness platform connecting campus placements, verified achievements, learning resources, assessments, and recruiters.
