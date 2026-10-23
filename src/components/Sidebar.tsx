@@ -23,7 +23,6 @@ import {
   ExternalLink,
   X,
   Database,
-  Radio,
   FileCheck2,
   Bot,
   FileText,
@@ -101,9 +100,6 @@ export default function Sidebar({
                   NMAMIT / 2026
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
-                Autonomous Contineo ERP
-              </p>
             </div>
           </div>
 
@@ -547,16 +543,6 @@ export default function Sidebar({
 
         {/* Bottom Section: Live Gateway & User Profile Card */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-950/60 space-y-3">
-          {/* Live indicator row */}
-          <div className="flex items-center justify-between px-1 text-[11px] text-slate-500 dark:text-slate-400">
-            <span className="flex items-center gap-1.5 font-medium">
-              <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-              Contineo Gateway
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/30">
-              Live
-            </span>
-          </div>
 
           {/* User Profile Card - matching reference screenshot! */}
           <div className="flex items-center justify-between p-2.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 shadow-sm">
