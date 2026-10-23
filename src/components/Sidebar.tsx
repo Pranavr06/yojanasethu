@@ -283,8 +283,11 @@ export default function Sidebar({
                         : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
                     }`}
                   >
-                    <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                    <span>Resume Builder</span>
+                    <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <span className="flex-1">AI Resume Builder</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      ATS AI
+                    </span>
                   </Link>
 
                   <Link

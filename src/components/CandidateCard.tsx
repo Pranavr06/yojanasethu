@@ -7,6 +7,7 @@ import {
   Clock,
   ExternalLink,
   ShieldCheck,
+  Sparkles,
   UserPlus,
   Check,
   Eye,
@@ -19,6 +20,7 @@ import StudentProfileModal from '@/components/recruiter/StudentProfileModal';
 interface Props {
   candidate: CandidateEvaluation;
   rank: number;
+  searchKeywords?: string[];
   drive?: PlacementDrive;
   isSelected?: boolean;
   onToggleSelect?: (candidateId: string) => void;
@@ -32,6 +34,7 @@ interface Props {
 export default function CandidateCard({
   candidate,
   rank,
+  searchKeywords = [],
   drive,
   isSelected = false,
   onToggleSelect,
@@ -43,6 +46,14 @@ export default function CandidateCard({
 }: Props) {
   const { student, match_score, is_eligible, skill_breakdown, explanation } = candidate;
   const [showProfile, setShowProfile] = useState(false);
+
+  const matchedPassportSkills = (student.skills || []).filter((s) => {
+    if (!searchKeywords || searchKeywords.length === 0) return false;
+    return searchKeywords.some((kw) =>
+      s.skill_name.toLowerCase().includes(kw.toLowerCase()) ||
+      s.category?.toLowerCase().includes(kw.toLowerCase())
+    );
+  });
 
   // Resume presence check from student evidence submissions
   const hasResume = useMemo(() => {
@@ -338,6 +349,37 @@ export default function CandidateCard({
             ))}
           </div>
         </div>
+
+{/* Matched In Student Skill Passport */}
+        {matchedPassportSkills.length > 0 && (
+          <div className="mt-3 p-2.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/20 border border-purple-200/80 dark:border-purple-800/40 text-xs animate-in fade-in">
+            <span className="text-[10px] font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider block mb-1.5 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-purple-500" />
+              <span>Keyword Matched in Student Skill Passport ({matchedPassportSkills.length} skills):</span>
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {matchedPassportSkills.map((ms) => (
+                <span
+                  key={ms.id || ms.skill_name}
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold border ${
+                    ms.verification_badge
+                      ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700/50'
+                      : 'bg-white dark:bg-slate-900 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800'
+                  }`}
+                >
+                  <span>{ms.skill_name}</span>
+                  {ms.verification_badge ? (
+                    <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-extrabold flex items-center gap-0.5">
+                      <CheckCircle2 className="w-2.5 h-2.5" /> Verified
+                    </span>
+                  ) : (
+                    <span className="text-[9px] text-slate-400">({ms.tier || 'claimed'})</span>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Decision Rationale */}
         <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800/80 text-xs flex items-start gap-1.5">

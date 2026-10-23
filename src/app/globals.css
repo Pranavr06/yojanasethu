@@ -63,3 +63,39 @@
   @apply shadow-md border-indigo-500/30 dark:border-indigo-500/40;
   transform: translateY(-2px);
 }
+
+
+/* ============================================================================ */
+/* ATS RESUME PRINT & PDF EXPORT OPTIMIZATIONS */
+/* ============================================================================ */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 8mm 10mm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Hide navigation, sidebar, bells, buttons, and app shell chrome */
+  aside,
+  nav,
+  header,
+  button,
+  .print\:hidden {
+    display: none !important;
+  }
+
+  /* Expand resume canvas to full print printable area */
+  #resume-document-print {
+    box-shadow: none !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+  }
+}

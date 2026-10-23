@@ -197,6 +197,41 @@ export interface Company {
   industry?: string | null;
   tier?: string;
   headquarters?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+}
+
+export interface RecruiterProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  designation?: string | null;
+  company_name: string;
+  company_id?: string | null;
+  company?: Company | null;
+  website?: string | null;
+  industry?: string | null;
+  tier?: string | null;
+  headquarters?: string | null;
+  avatar_url?: string | null;
+  linkedin_url?: string | null;
+  created_at?: string;
+}
+
+export interface OnboardRecruiterPayload {
+  fullName: string;
+  email: string;
+  password: string;
+  phone?: string;
+  designation?: string;
+  companyName: string;
+  website?: string;
+  industry?: string;
+  tier?: string;
+  headquarters?: string;
+  logoUrl?: string;
+  linkedinUrl?: string;
 }
 
 export interface PlacementDrive {
@@ -593,4 +628,141 @@ export interface SkillGapAnalysisResult {
     resource_link?: string;
   }[];
   transparency_note: string;
+}
+
+
+// ========================================================
+// AI RESUME BUILDER & RESUME ANALYZER TYPES
+// ========================================================
+
+export type ResumeTemplateType = 'modern' | 'minimal' | 'classic' | 'technical';
+
+export interface ResumeContact {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+  linkedin?: string;
+  github?: string;
+  portfolio?: string;
+}
+
+export interface ResumeEducation {
+  institution: string;
+  degree: string;
+  field: string;
+  cgpa: string;
+  startYear: string;
+  endYear: string;
+  location?: string;
+  isVerified?: boolean;
+}
+
+export interface ResumeProject {
+  id: string;
+  title: string;
+  role?: string;
+  techStack: string[];
+  description: string;
+  highlights?: string[];
+  githubUrl?: string;
+  liveUrl?: string;
+}
+
+export interface ResumeExperience {
+  id: string;
+  role: string;
+  company: string;
+  location?: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+  highlights?: string[];
+}
+
+export interface ResumeCertification {
+  id: string;
+  name: string;
+  issuer: string;
+  date?: string;
+  isVerified?: boolean;
+  score?: number;
+  credentialUrl?: string;
+}
+
+export interface ResumeSkills {
+  languages: string[];
+  frameworks: string[];
+  toolsAndCloud: string[];
+  coreCompetencies: string[];
+  softSkills?: string[];
+}
+
+export interface ResumeData {
+  contact: ResumeContact;
+  summary: string;
+  targetRole: string;
+  targetJobDescription?: string;
+  education: ResumeEducation;
+  skills: ResumeSkills;
+  projects: ResumeProject[];
+  experience: ResumeExperience[];
+  certifications: ResumeCertification[];
+  achievements: string[];
+}
+
+export interface ResumeAnalysisIssue {
+  category: 'clarity' | 'structure' | 'relevance' | 'ats_readability' | 'quantification' | 'missing_info';
+  severity: 'critical' | 'warning' | 'info';
+  description: string;
+  recommendation: string;
+}
+
+export interface ResumeAnalysisMissingSkill {
+  skill: string;
+  category: string;
+  importance: 'high' | 'medium' | 'low';
+  reason?: string;
+}
+
+export interface ResumeAnalysisKeywordMatch {
+  keyword: string;
+  foundInResume: boolean;
+  suggestion: string;
+}
+
+export interface ResumeAnalysisScoreBreakdown {
+  clarity: number;
+  structure: number;
+  relevance: number;
+  atsReadability: number;
+  impactMetrics: number;
+}
+
+export interface ResumeAnalysisResult {
+  atsScoreEstimate: number; // 0-100
+  scoreBreakdown: ResumeAnalysisScoreBreakdown;
+  summaryFeedback: string;
+  strengths: string[];
+  issues: ResumeAnalysisIssue[];
+  recommendations: string[];
+  missingSkills: ResumeAnalysisMissingSkill[];
+  matchedSkills: string[];
+  keywordOptimization: ResumeAnalysisKeywordMatch[];
+  targetRoleAlignment: string;
+  disclaimer: string;
+  extractedSections?: Partial<ResumeData>;
+}
+
+export interface SavedResume {
+  id: string;
+  student_id: string;
+  title: string;
+  target_role: string;
+  target_job_description?: string;
+  template: ResumeTemplateType;
+  resume_data: ResumeData;
+  analysis_result?: ResumeAnalysisResult | null;
+  created_at: string;
+  updated_at: string;
 }

@@ -32,6 +32,9 @@ import {
   Trophy,
   ChevronDown,
   ChevronRight,
+  ShieldCheck,
+  Tag,
+  X,
 } from 'lucide-react';
 
 export default function RecruiterPage() {
@@ -45,6 +48,31 @@ export default function RecruiterPage() {
 
   // Discovery & Smart Filters
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
+  const [verifiedOnly, setVerifiedOnly] = useState(false);
+
+  const POPULAR_SKILLS = [
+    'Python',
+    'AWS',
+    'React',
+    'Machine Learning',
+    'Data Structures',
+    'PostgreSQL',
+    'Docker',
+    'Java',
+    'Next.js',
+    'TypeScript',
+    'Cloud Architecture',
+    'DSA',
+  ];
+
+  const activeSearchTerms = useMemo(() => {
+    const terms = searchQuery
+      .split(/[\s,]+/)
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+    return Array.from(new Set([...terms, ...selectedSkills]));
+  }, [searchQuery, selectedSkills]);
   const [selectedBranch, setSelectedBranch] = useState<string>('all');
   const [selectedSkill, setSelectedSkill] = useState<string>('all');
   const [selectedMinCgpa, setSelectedMinCgpa] = useState<number>(0);
@@ -81,7 +109,7 @@ export default function RecruiterPage() {
   // Reset pagination when search or filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedBranch, selectedSkill, selectedMinCgpa, sortBy, activeTab]);
+  }, [searchQuery, selectedBranch, selectedSkill, selectedMinCgpa, sortBy, activeTab, selectedSkills, verifiedOnly]);
 
   // 1. Fetch Drives
   useEffect(() => {
@@ -223,14 +251,77 @@ export default function RecruiterPage() {
     (candidates: CandidateEvaluation[]) => {
       let filtered = [...candidates];
 
-      // 1. Search Query (Name, USN, Branch)
+      // 1. Skill chips filter: Candidate must match all selected skill chips
+      if (selectedSkills.length > 0) {
+        filtered = filtered.filter((candidate) => {
+          const studentSkills = (candidate.student.skills || []).map((s) => s.skill_name.toLowerCase());
+          const breakdownSkills = (candidate.skill_breakdown || []).map((sb) => sb.skill_name.toLowerCase());
+          const evidenceSkills = (candidate.student.evidence_submissions || []).flatMap((sub) => [
+            ...(sub.associated_skills || []),
+            ...(sub.technologies || []),
+            sub.title || '',
+          ]).map((s) => s.toLowerCase());
+
+          const allSkills = [...studentSkills, ...breakdownSkills, ...evidenceSkills];
+
+          return selectedSkills.every((sel) =>
+            allSkills.some((s) => s.includes(sel.toLowerCase()))
+          );
+        });
+      }
+
+      // 2. Verified skills only filter
+      if (verifiedOnly) {
+        filtered = filtered.filter((candidate) => {
+          const hasVerifiedPassportSkill = (candidate.student.skills || []).some(
+            (s) => s.verification_badge || s.tier === 'faculty_verified' || s.tier === 'expert'
+          );
+          const hasVerifiedBreakdown = (candidate.skill_breakdown || []).some(
+            (sb) => sb.status === 'verified'
+          );
+          return hasVerifiedPassportSkill || hasVerifiedBreakdown;
+        });
+      }
+
+      // 3. Multi-keyword search across skills, name, USN, branch, target role, and project evidence
       const query = searchQuery.trim().toLowerCase();
       if (query) {
+        const keywords = query
+          .split(/[\s,]+/)
+          .map((k) => k.trim())
+          .filter((k) => k.length > 0);
+
         filtered = filtered.filter((candidate) => {
-          const name = candidate.student?.profile?.full_name?.toLowerCase() || '';
-          const usn = candidate.student?.profile?.usn?.toLowerCase() || '';
-          const branch = candidate.student?.profile?.department_code?.toLowerCase() || '';
-          return name.includes(query) || usn.includes(query) || branch.includes(query);
+          const name = (candidate.student.profile?.full_name || '').toLowerCase();
+          const usn = (candidate.student.profile?.usn || '').toLowerCase();
+          const branch = (candidate.student.profile?.department_code || '').toLowerCase();
+          const targetRole = (candidate.student.target_role || '').toLowerCase();
+
+          const studentSkills = (candidate.student.skills || []).map((s) => ({
+            name: s.skill_name.toLowerCase(),
+            category: (s.category || '').toLowerCase(),
+          }));
+
+          const breakdownSkills = (candidate.skill_breakdown || []).map((sb) => sb.skill_name.toLowerCase());
+
+          const evidenceTexts = (candidate.student.evidence_submissions || []).flatMap((sub) => [
+            ...(sub.associated_skills || []),
+            ...(sub.technologies || []),
+            sub.title || '',
+            sub.description || '',
+          ]).map((t) => t.toLowerCase());
+
+          return keywords.every((kw) => {
+            return (
+              name.includes(kw) ||
+              usn.includes(kw) ||
+              branch.includes(kw) ||
+              targetRole.includes(kw) ||
+              studentSkills.some((s) => s.name.includes(kw) || s.category.includes(kw)) ||
+              breakdownSkills.some((bs) => bs.includes(kw)) ||
+              evidenceTexts.some((et) => et.includes(kw))
+            );
+          });
         });
       }
 
@@ -280,7 +371,7 @@ export default function RecruiterPage() {
 
       return filtered;
     },
-    [searchQuery, selectedBranch, selectedMinCgpa, selectedSkill, sortBy]
+    [searchQuery, selectedBranch, selectedMinCgpa, selectedSkill, sortBy, selectedSkills, verifiedOnly]
   );
 
   const filteredEligibleCandidates = useMemo(
@@ -807,6 +898,30 @@ export default function RecruiterPage() {
 
       {/* 4. Candidate Discovery, Search, Smart Filters & Clear All Filters */}
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/60 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Search className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+              <span>Keyword & Skill Talent Discovery</span>
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Search by student skills (e.g., Python, AWS, React), project evidence, branch, or USN.
+            </p>
+          </div>
+
+          {/* Verified Skills Only Toggle */}
+          <label className="flex items-center gap-2 cursor-pointer select-none px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:border-purple-400 transition-colors self-start sm:self-center">
+            <input
+              type="checkbox"
+              checked={verifiedOnly}
+              onChange={(e) => setVerifiedOnly(e.target.checked)}
+              className="rounded text-purple-600 focus:ring-purple-500 w-3.5 h-3.5 cursor-pointer"
+            />
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Verified Skills Only</span>
+          </label>
+        </div>
+
         {/* Search Input */}
         <div className="relative">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -815,9 +930,69 @@ export default function RecruiterPage() {
             type="search"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search candidates by student name, USN (e.g. NNM24IS), or department..."
-            className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 py-3 text-sm text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+            placeholder="Search keywords: 'Python, AWS', 'Machine Learning', 'React', 'DSA', student name, or USN..."
+            className="w-full rounded-xl border border-slate-200 bg-white pl-10 pr-10 py-3 text-sm text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+
+        {/* Quick Skill Filter Pills */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+            <span className="font-semibold flex items-center gap-1">
+              <Tag className="w-3 h-3 text-purple-500" />
+              <span>Filter by In-Demand Student Skills:</span>
+            </span>
+
+            {(selectedSkills.length > 0 || searchQuery || verifiedOnly || selectedBranch !== 'all' || selectedSkill !== 'all' || selectedMinCgpa > 0) && (
+              <button
+                onClick={() => {
+                  setSelectedSkills([]);
+                  setSearchQuery('');
+                  setVerifiedOnly(false);
+                  setSelectedBranch('all');
+                  setSelectedSkill('all');
+                  setSelectedMinCgpa(0);
+                }}
+                className="text-purple-600 dark:text-purple-400 font-bold hover:underline"
+              >
+                Clear All Filters
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {POPULAR_SKILLS.map((skill) => {
+              const isSelected = selectedSkills.includes(skill);
+              return (
+                <button
+                  key={skill}
+                  type="button"
+                  onClick={() => {
+                    setSelectedSkills((prev) =>
+                      isSelected ? prev.filter((s) => s !== skill) : [...prev, skill]
+                    );
+                  }}
+                  className={`text-[11px] font-bold px-3 py-1 rounded-xl transition-all flex items-center gap-1 border ${
+                    isSelected
+                      ? 'bg-purple-600 text-white border-purple-600 shadow-sm shadow-purple-500/20'
+                      : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+                  }`}
+                >
+                  <Sparkles className={`w-2.5 h-2.5 ${isSelected ? 'text-amber-300' : 'text-purple-400'}`} />
+                  <span>{skill}</span>
+                  {isSelected && <X className="w-3 h-3 ml-0.5" />}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Dropdown Filters Row */}
@@ -1108,6 +1283,7 @@ export default function RecruiterPage() {
                   key={studentId}
                   candidate={candidate}
                   rank={idx + 1}
+                  searchKeywords={activeSearchTerms}
                   drive={currentDrive}
                   isSelected={isSelected}
                   onToggleSelect={handleToggleSelectCandidate}
