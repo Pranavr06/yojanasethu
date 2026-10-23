@@ -100,3 +100,68 @@ export async function uploadDocumentToSupabaseStorage(params: {
 
 // Backward-compatible alias
 export const uploadDocumentToS3 = uploadDocumentToSupabaseStorage;
+
+/**
+ * Generates a secure, time-limited signed URL for a stored document (e.g. resume or certificate).
+ * Avoids exposing private storage URLs or service-role keys to browser clients.
+ */
+export async function getSignedDocumentUrl(
+  documentStoragePath: string,
+  expiresInSeconds: number = 3600
+): Promise<{ signedUrl: string | null; cleanPath: string; error?: string }> {
+  if (!documentStoragePath) {
+    return { signedUrl: null, cleanPath: '', error: 'Storage path is required' };
+  }
+
+  // Strip bucket name prefix if present (e.g. 'documents/resumes/...' -> 'resumes/...')
+  const cleanPath = documentStoragePath.replace(new RegExp(`^${STORAGE_BUCKET}/`), '');
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.storage
+        .from(STORAGE_BUCKET)
+        .createSignedUrl(cleanPath, expiresInSeconds);
+
+      if (!error && data?.signedUrl) {
+        return { signedUrl: data.signedUrl, cleanPath };
+      }
+      if (error) {
+        console.warn('Supabase createSignedUrl error:', error.message);
+      }
+    } catch (err: any) {
+      console.warn('Supabase createSignedUrl exception:', err.message);
+    }
+  }
+
+  // Safe fallback to local streaming proxy API endpoint
+  return {
+    signedUrl: `/api/recruiter/resume/file?path=${encodeURIComponent(cleanPath)}`,
+    cleanPath,
+  };
+}
+/**
+ * Deletes a document from Supabase Storage by its storage path.
+ */
+export async function deleteDocumentFromSupabaseStorage(
+  documentStoragePath: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!documentStoragePath) return { success: true };
+
+  const cleanPath = documentStoragePath.replace(new RegExp(`^${STORAGE_BUCKET}/`), '');
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase.storage.from(STORAGE_BUCKET).remove([cleanPath]);
+      if (error) {
+        console.warn('Supabase storage remove error:', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.warn('Supabase storage remove exception:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  return { success: true };
+}

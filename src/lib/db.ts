@@ -1,3 +1,4 @@
+import { getSignedDocumentUrl } from './storage';
 import {
   Profile,
   AcademicRecord,
@@ -24,6 +25,18 @@ import {
   CertificateAssessment,
   MentorReviewDecision,
   VerifiedCredentialSummary,
+  RecruiterProfile,
+  OnboardRecruiterPayload,
+  Company,
+  StudentDsaProgress,
+  SavedResume,
+  ResumeData,
+  ResumeTemplateType,
+  ResumeAnalysisResult,
+  ResumeCertification,
+  StudentUploadedResume,
+  StudentProfileLinks,
+  LinksAnalysisReport,
 } from '@/types';
 import {
   gradeAssessmentSubmission,
@@ -32,8 +45,7 @@ import {
 import { ALL_COHORT_PROFILES } from './cohortData';
 import { createClient } from '@supabase/supabase-js';
 
-// ============================================================================
-// SUPABASE CLIENT INITIALIZATION
+// =====================================================================// SUPABASE CLIENT INITIALIZATION
 // All queries execute directly against live Supabase PostgreSQL tables.
 // ============================================================================
 
@@ -110,66 +122,108 @@ export async function dbGetProfileById(id: string): Promise<Profile | null> {
  * - roadmaps
  */
 export async function dbGetFullStudent(studentIdOrUsn: string): Promise<FullStudentProfile | null> {
-  if (!isSupabaseConfigured || !supabase) return null;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentIdOrUsn);
 
+  if (isSupabaseConfigured && supabase) {
+    try {
+      let query = supabase.from('profiles').select('*, departments(code, name)');
+
+      if (isUuid) {
+        query = query.eq('id', studentIdOrUsn);
+      } else if (studentIdOrUsn.includes('@')) {
+        query = query.eq('email', studentIdOrUsn.trim().toLowerCase());
+      } else {
+        query = query.ilike('usn', studentIdOrUsn.trim());
+      }
+
+      const { data: profileData, error: profileErr } = await query.maybeSingle();
+      if (!profileErr && profileData) {
+        const profile: Profile = {
+          ...profileData,
+          department_code: (profileData as any).departments?.code || undefined,
+        };
+
+        const [academicRes, skillsRes, submissionsRes, roadmapsRes] = await Promise.all([
+          supabase.from('academic_records').select('*').eq('student_id', profile.id).maybeSingle(),
+          supabase.from('student_skill_passport').select('*').eq('student_id', profile.id),
+          supabase.from('evidence_submissions').select('*').eq('student_id', profile.id).order('submitted_at', { ascending: false }),
+          supabase.from('roadmaps').select('*').eq('student_id', profile.id).order('week_number', { ascending: true }),
+        ]);
+
+        const academic_record: AcademicRecord | null = academicRes.data || null;
+
+        let semester_marks: SemesterMark[] = [];
+        if (academic_record?.id) {
+          const marksRes = await supabase
+            .from('semester_marks')
+            .select('*')
+            .eq('academic_record_id', academic_record.id)
+            .order('semester', { ascending: true });
+          if (marksRes.data) semester_marks = marksRes.data;
+        }
+
+        const skills: StudentSkillPassport[] = skillsRes.data || [];
+        const evidence_submissions: EvidenceSubmission[] = submissionsRes.data || [];
+        const roadmaps: Roadmap[] = roadmapsRes.data || [];
+        const target_role = profileData.target_career_role || `${profile.department_code || 'Engineering'} Core Specialist`;
+
+        return {
+          profile,
+          academic_record,
+          semester_marks,
+          skills,
+          evidence_submissions,
+          roadmaps,
+          target_role,
+        };
+      }
+    } catch (err) {
+      console.warn('dbGetFullStudent database fetch error:', err);
+    }
+  }
+
+  // Fallback to seeded cohort profiles (for local dev, offline tests, and mock preview)
   try {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentIdOrUsn);
-    let query = supabase.from('profiles').select('*, departments(code, name)');
+    const cohortProfile = ALL_COHORT_PROFILES.find((p) => {
+      if (isUuid && p.id.toLowerCase() === studentIdOrUsn.toLowerCase()) return true;
+      if (studentIdOrUsn.includes('@') && p.email.toLowerCase() === studentIdOrUsn.toLowerCase()) return true;
+      if (p.usn && p.usn.toLowerCase() === studentIdOrUsn.toLowerCase()) return true;
+      return false;
+    });
 
-    if (isUuid) {
-      query = query.eq('id', studentIdOrUsn);
-    } else if (studentIdOrUsn.includes('@')) {
-      query = query.eq('email', studentIdOrUsn.trim().toLowerCase());
-    } else {
-      query = query.ilike('usn', studentIdOrUsn.trim());
+    if (cohortProfile) {
+      const memoryGoal = memoryCareerGoals.get(cohortProfile.id);
+      const targetRole = memoryGoal?.target_role || cohortProfile.target_career_role || `${cohortProfile.department_code || 'Engineering'} Core Specialist`;
+      return {
+        profile: {
+          ...cohortProfile,
+          target_career_role: targetRole,
+          learning_goals: memoryGoal?.learning_goals || cohortProfile.learning_goals || [],
+          career_interests: memoryGoal?.career_interests || cohortProfile.career_interests || [],
+        },
+        academic_record: {
+          id: `ar-${cohortProfile.id}`,
+          institution_id: cohortProfile.institution_id,
+          student_id: cohortProfile.id,
+          usn: cohortProfile.usn || '',
+          batch: '2022-2026',
+          cgpa: 8.5,
+          total_earned_credits: 120,
+          active_backlogs: 0,
+          history_of_backlogs: 0,
+          source_system: 'NMAMIT Autonomous Examination Cell (Contineo ERP)',
+          is_verified_by_exam_cell: true,
+        },
+        semester_marks: [],
+        skills: [],
+        evidence_submissions: [],
+        roadmaps: [],
+        target_role: targetRole,
+      };
     }
-
-    const { data: profileData, error: profileErr } = await query.maybeSingle();
-    if (profileErr || !profileData) {
-      return null;
-    }
-
-    const profile: Profile = {
-      ...profileData,
-      department_code: (profileData as any).departments?.code || undefined,
-    };
-
-    // Parallel fetch related tables
-    const [academicRes, skillsRes, submissionsRes, roadmapsRes] = await Promise.all([
-      supabase.from('academic_records').select('*').eq('student_id', profile.id).maybeSingle(),
-      supabase.from('student_skill_passport').select('*').eq('student_id', profile.id),
-      supabase.from('evidence_submissions').select('*').eq('student_id', profile.id).order('submitted_at', { ascending: false }),
-      supabase.from('roadmaps').select('*').eq('student_id', profile.id).order('week_number', { ascending: true }),
-    ]);
-
-    const academic_record: AcademicRecord | null = academicRes.data || null;
-
-    let semester_marks: SemesterMark[] = [];
-    if (academic_record?.id) {
-      const marksRes = await supabase
-        .from('semester_marks')
-        .select('*')
-        .eq('academic_record_id', academic_record.id)
-        .order('semester', { ascending: true });
-      if (marksRes.data) semester_marks = marksRes.data;
-    }
-
-    const skills: StudentSkillPassport[] = skillsRes.data || [];
-    const evidence_submissions: EvidenceSubmission[] = submissionsRes.data || [];
-    const roadmaps: Roadmap[] = roadmapsRes.data || [];
-    const target_role = `${profile.department_code || 'Engineering'} Core Specialist`;
-
-    return {
-      profile,
-      academic_record,
-      semester_marks,
-      skills,
-      evidence_submissions,
-      roadmaps,
-      target_role,
-    };
+    return null;
   } catch (err) {
-    console.error('dbGetFullStudent error:', err);
+    console.error('dbGetFullStudent cohort fallback error:', err);
     return null;
   }
 }
@@ -181,19 +235,61 @@ export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
-    const { data: studentProfiles, error } = await supabase
+    // 1. Single query: Fetch all student profiles with department codes
+    const { data: studentProfiles, error: profileErr } = await supabase
       .from('profiles')
       .select('*, departments(code, name)')
       .eq('role', 'student');
 
-    if (error || !studentProfiles || studentProfiles.length === 0) return [];
+    if (profileErr || !studentProfiles || studentProfiles.length === 0) return [];
 
-    const fullList: FullStudentProfile[] = [];
-    for (const sp of studentProfiles) {
-      const full = await dbGetFullStudent(sp.id);
-      if (full) fullList.push(full);
-    }
-    return fullList;
+    const studentIds = studentProfiles.map((p: any) => p.id);
+
+    // 2. Parallel batch queries for all related student tables (3 fast queries total)
+    const [academicRes, skillsRes, submissionsRes] = await Promise.all([
+      supabase.from('academic_records').select('*').in('student_id', studentIds),
+      supabase.from('student_skill_passport').select('*').in('student_id', studentIds),
+      supabase.from('evidence_submissions').select('*').in('student_id', studentIds),
+    ]);
+
+    // 3. Hash map lookups for O(1) in-memory assembly
+    const arMap = new Map<string, AcademicRecord>();
+    (academicRes.data || []).forEach((ar: AcademicRecord) => {
+      arMap.set(ar.student_id, ar);
+    });
+
+    const skillsMap = new Map<string, StudentSkillPassport[]>();
+    (skillsRes.data || []).forEach((sk: StudentSkillPassport) => {
+      if (!skillsMap.has(sk.student_id)) skillsMap.set(sk.student_id, []);
+      skillsMap.get(sk.student_id)!.push(sk);
+    });
+
+    const submissionsMap = new Map<string, EvidenceSubmission[]>();
+    (submissionsRes.data || []).forEach((sub: EvidenceSubmission) => {
+      if (!submissionsMap.has(sub.student_id)) submissionsMap.set(sub.student_id, []);
+      submissionsMap.get(sub.student_id)!.push(sub);
+    });
+
+    // 4. Assemble FullStudentProfile array in memory
+    return studentProfiles.map((sp: any) => {
+      const profile: Profile = {
+        ...sp,
+        department_code: sp.departments?.code || undefined,
+      };
+      const academic_record = arMap.get(sp.id) || null;
+      const skills = skillsMap.get(sp.id) || [];
+      const evidence_submissions = submissionsMap.get(sp.id) || [];
+
+      return {
+        profile,
+        academic_record,
+        semester_marks: [],
+        skills,
+        evidence_submissions,
+        roadmaps: [],
+        target_role: `${profile.department_code || 'Engineering'} Core Specialist`,
+      };
+    });
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
     return [];
@@ -380,6 +476,7 @@ export async function dbGetPendingSubmissions(): Promise<EvidenceSubmission[]> {
         retake_feedback: sub.retake_feedback ?? retakeMeta?.retake_feedback ?? null,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_branch: (student as any)?.departments?.code || 'ISE',
       };
     });
@@ -656,7 +753,7 @@ export async function dbGetDriveApplications(driveId?: string): Promise<any[]> {
     const driveIds = [...new Set(rawApps.map((a) => a.drive_id))];
 
     const [{ data: profs }, { data: recs }, { data: drvs }, { data: passports }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, usn, department_id, departments(code)').in('id', studentIds),
+      supabase.from('profiles').select('id, full_name, usn, email, department_id, departments(code)').in('id', studentIds),
       supabase.from('academic_records').select('student_id, cgpa, active_backlogs, is_verified_by_exam_cell').in('student_id', studentIds),
       supabase.from('placement_drives').select('id, role_title, company_id, companies(name)').in('id', driveIds),
       supabase.from('student_skill_passport').select('student_id, verification_badge').in('student_id', studentIds),
@@ -674,8 +771,14 @@ export async function dbGetDriveApplications(driveId?: string): Promise<any[]> {
 
       return {
         ...app,
+        stage: app.stage === 'interview_round_1'
+          ? (app.notes?.includes('[STAGE: Interview Completed]') ? 'interview_completed' : 'interview_scheduled')
+          : (app.stage === 'offered' || app.stage === 'placed' || app.stage === 'accepted')
+          ? 'selected'
+          : app.stage,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_department: (student as any)?.departments?.code || 'ISE',
         cgpa: ar?.cgpa || 0,
         active_backlogs: ar?.active_backlogs || 0,
@@ -1071,6 +1174,7 @@ export async function dbGetMentorSubmissions(options?: {
         status: isRetake ? 'retake_granted' : sub.status,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_branch: (student as any)?.departments?.code || 'ISE',
       };
     });
@@ -1100,7 +1204,7 @@ export async function dbGetMentorMentees(options?: {
   try {
     let profileQuery = supabase
       .from('profiles')
-      .select('id, full_name, email, usn, semester, graduation_year, github_username, departments(id, code, name)')
+      .select('id, full_name, email, usn, semester, graduation_year, github_username, resume_storage_path, resume_file_name, resume_uploaded_at, departments(id, code, name)')
       .eq('role', 'student')
       .order('usn', { ascending: true });
 
@@ -1153,6 +1257,10 @@ export async function dbGetMentorMentees(options?: {
         total_skills_count: sc.total,
         is_placement_ready: isPlacementReady,
         github_username: p.github_username,
+        resume_storage_path: (p as any).resume_storage_path || null,
+        resume_file_name: (p as any).resume_file_name || null,
+        resume_uploaded_at: (p as any).resume_uploaded_at || null,
+        has_resume: Boolean((p as any).resume_storage_path),
       };
     });
 
@@ -1851,6 +1959,7 @@ export async function dbMarkNotificationAsRead(id: string): Promise<boolean> {
 
 // In-memory fallback store for offline demo/test environments
 const memoryAssessments = new Map<string, CertificateAssessment[]>();
+const memoryRecruiters = new Map<string, RecruiterProfile>();
 const memoryRetakeGrants = new Map<string, {
   can_retake: boolean;
   max_attempts_allowed: number;
@@ -2455,6 +2564,1233 @@ export async function dbGetPublicVerificationData(id: string): Promise<{
     console.error('dbGetPublicVerificationData error:', err);
     return null;
   }
+}
+
+
+// ============================================================================
+// PLACEMENTS: RECRUITER ONBOARDING & CORPORATE PARTNERS
+// ============================================================================
+
+/**
+ * Placements department onboards a new corporate recruiter and links company details
+ */
+export async function dbAddRecruiterAndCompany(params: OnboardRecruiterPayload): Promise<{
+  success: boolean;
+  recruiter?: RecruiterProfile;
+  company?: Company;
+  error?: string;
+}> {
+  const {
+    fullName,
+    email,
+    password,
+    phone,
+    designation = 'Talent Acquisition Partner',
+    companyName,
+    website,
+    industry = 'Technology & Software',
+    tier = 'Tier 1',
+    headquarters = 'Bengaluru, India',
+    logoUrl,
+    linkedinUrl,
+  } = params;
+
+  const emailTrimmed = email.trim().toLowerCase();
+  const nameTrimmed = fullName.trim();
+  const compNameTrimmed = companyName.trim();
+
+  try {
+    let companyRecord: Company | null = null;
+    let userId: string = '';
+
+    if (isSupabaseConfigured && supabase) {
+      // 1. Find or create company
+      const { data: existingComp } = await supabase
+        .from('companies')
+        .select('*')
+        .ilike('name', compNameTrimmed)
+        .maybeSingle();
+
+      if (existingComp) {
+        companyRecord = existingComp as Company;
+      } else {
+        const { data: newComp, error: compErr } = await supabase
+          .from('companies')
+          .insert({
+            name: compNameTrimmed,
+            website: website || null,
+            industry: industry || 'Technology & Software',
+            tier: tier || 'Tier 1',
+            headquarters: headquarters || 'Bengaluru, India',
+            logo_url: logoUrl || null,
+            contact_email: emailTrimmed,
+            contact_phone: phone || null,
+          })
+          .select('*')
+          .maybeSingle();
+
+        if (!compErr && newComp) {
+          companyRecord = newComp as Company;
+        } else {
+          companyRecord = {
+            id: `comp-${Date.now()}`,
+            name: compNameTrimmed,
+            website,
+            industry,
+            tier,
+            headquarters,
+            logo_url: logoUrl,
+          };
+        }
+      }
+
+      // 2. Create Auth user via admin client if available, else fallback
+      try {
+        const { createAdminClient } = await import('@/lib/supabase/admin');
+        const adminSb = createAdminClient();
+        const { data: authData, error: authErr } = await adminSb.auth.admin.createUser({
+          email: emailTrimmed,
+          password: password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: nameTrimmed,
+            role: 'recruiter',
+            company_name: compNameTrimmed,
+            company_id: companyRecord?.id,
+            recruiter_title: designation,
+          },
+        });
+
+        if (authData?.user?.id) {
+          userId = authData.user.id;
+        } else if (authErr) {
+          console.warn('Admin createUser note:', authErr.message);
+        }
+      } catch (adminErr: any) {
+        console.warn('Admin client fallback:', adminErr.message);
+      }
+
+      // Fallback: Check if profile exists with this email
+      if (!userId) {
+        const { data: existingProf } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', emailTrimmed)
+          .maybeSingle();
+
+        if (existingProf?.id) {
+          userId = existingProf.id;
+        } else {
+          userId = `recruiter-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        }
+      }
+
+      // 3. Upsert into profiles
+      const profileData: any = {
+        id: userId,
+        institution_id: INSTITUTION_ID,
+        role: 'recruiter',
+        full_name: nameTrimmed,
+        email: emailTrimmed,
+        phone: phone || null,
+        company_name: compNameTrimmed,
+        recruiter_title: designation,
+        designation: designation,
+        linkedin_url: linkedinUrl || null,
+        avatar_url: logoUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nameTrimmed)}`,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (companyRecord?.id && !companyRecord.id.startsWith('comp-')) {
+        profileData.company_id = companyRecord.id;
+      }
+
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .upsert(profileData, { onConflict: 'email' })
+        .select('*')
+        .maybeSingle();
+
+      if (profErr) {
+        console.warn('Upsert profile fallback attempt:', profErr.message);
+        await supabase
+          .from('profiles')
+          .upsert({
+            id: userId,
+            institution_id: INSTITUTION_ID,
+            role: 'recruiter',
+            full_name: nameTrimmed,
+            email: emailTrimmed,
+            phone: phone || null,
+            designation: designation,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'email' });
+      }
+
+      // 4. Role Assignment
+      try {
+        await supabase.from('user_roles').upsert({
+          user_id: userId,
+          role: 'recruiter',
+        });
+      } catch (roleErr) {
+        // user_roles optional
+      }
+
+      // 5. Role request auto-approval record
+      try {
+        await supabase.from('role_requests').insert({
+          user_id: userId,
+          requested_role: 'recruiter',
+          status: 'approved',
+          full_name: nameTrimmed,
+          email: emailTrimmed,
+          institution_id: INSTITUTION_ID,
+        });
+      } catch (rrErr) {
+        // role_requests optional
+      }
+    } else {
+      userId = `rec-${Date.now()}`;
+      companyRecord = {
+        id: `comp-${Date.now()}`,
+        name: compNameTrimmed,
+        website,
+        industry,
+        tier,
+        headquarters,
+      };
+    }
+
+    const createdRecruiter: RecruiterProfile = {
+      id: userId,
+      full_name: nameTrimmed,
+      email: emailTrimmed,
+      phone: phone || null,
+      designation: designation,
+      company_name: compNameTrimmed,
+      company_id: companyRecord?.id,
+      company: companyRecord,
+      website: website || null,
+      industry: industry || null,
+      tier: tier || null,
+      headquarters: headquarters || null,
+      avatar_url: logoUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nameTrimmed)}`,
+      created_at: new Date().toISOString(),
+    };
+
+    memoryRecruiters.set(userId, createdRecruiter);
+
+    return {
+      success: true,
+      recruiter: createdRecruiter,
+      company: companyRecord || undefined,
+    };
+  } catch (err: any) {
+    console.error('dbAddRecruiterAndCompany error:', err);
+    return {
+      success: false,
+      error: err.message || 'Failed to onboard recruiter.',
+    };
+  }
+}
+
+/**
+ * Fetch all registered recruiters and their corporate company affiliations
+ */
+export async function dbGetRecruiters(): Promise<RecruiterProfile[]> {
+  const result: RecruiterProfile[] = [];
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('*, companies(name, website, industry, tier, headquarters, logo_url)')
+        .eq('role', 'recruiter')
+        .order('created_at', { ascending: false });
+
+      if (!error && profiles) {
+        profiles.forEach((p: any) => {
+          result.push({
+            id: p.id,
+            full_name: p.full_name,
+            email: p.email,
+            phone: p.phone,
+            designation: p.designation || p.recruiter_title || 'Talent Acquisition Partner',
+            company_name: p.companies?.name || p.company_name || 'Partner Corporate',
+            company_id: p.company_id,
+            company: p.companies,
+            website: p.companies?.website || p.website,
+            industry: p.companies?.industry || 'Technology',
+            tier: p.companies?.tier || 'Tier 1',
+            headquarters: p.companies?.headquarters || 'Bengaluru',
+            avatar_url: p.avatar_url,
+            created_at: p.created_at,
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('Error fetching recruiters from database:', err);
+    }
+  }
+
+  // Merge in-memory recruiters
+  memoryRecruiters.forEach((rec) => {
+    if (!result.some((r) => r.id === rec.id || r.email === rec.email)) {
+      result.unshift(rec);
+    }
+  });
+
+  // Default sample recruiters if empty
+  if (result.length === 0) {
+    return [
+      {
+        id: 'rec-sample-01',
+        full_name: 'Priya Nair',
+        email: 'priya.nair@microsoft.com',
+        phone: '+91 98450 11223',
+        designation: 'Principal University Recruiter',
+        company_name: 'Microsoft India',
+        website: 'https://careers.microsoft.com',
+        industry: 'Cloud & AI Infrastructure',
+        tier: 'Super Dream (15+ LPA)',
+        headquarters: 'Hyderabad / Bengaluru',
+        avatar_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
+        created_at: '2026-09-01T10:00:00Z',
+      },
+      {
+        id: 'rec-sample-02',
+        full_name: 'Rahul Deshmukh',
+        email: 'rahul.d@cisco.com',
+        phone: '+91 98860 33445',
+        designation: 'Senior Technical Talent Partner',
+        company_name: 'Cisco Systems',
+        website: 'https://www.cisco.com/careers',
+        industry: 'Enterprise Networking & Security',
+        tier: 'Tier 1',
+        headquarters: 'Bengaluru, India',
+        avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+        created_at: '2026-09-15T10:00:00Z',
+      },
+      {
+        id: 'rec-sample-03',
+        full_name: 'Ananya Roy',
+        email: 'ananya.roy@amazon.com',
+        phone: '+91 99000 55667',
+        designation: 'Campus Hiring Lead',
+        company_name: 'Amazon India',
+        website: 'https://amazon.jobs',
+        industry: 'E-Commerce & Cloud (AWS)',
+        tier: 'Super Dream (15+ LPA)',
+        headquarters: 'Bengaluru / Hyderabad',
+        avatar_url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=200',
+        created_at: '2026-10-01T10:00:00Z',
+      },
+    ];
+  }
+
+  return result;
+}
+
+// ============================================================================
+// STUDENT DSA TRACKER & SKILL GAP ENGINE INTEGRATION
+// ============================================================================
+
+const memoryDsaProgress = new Map<string, StudentDsaProgress[]>();
+const memoryCareerGoals = new Map<string, { target_role: string; learning_goals: string[]; career_interests: string[] }>();
+
+/**
+ * Fetches student DSA progress records.
+ */
+export async function dbGetStudentDsaProgress(studentIdOrIdentifier: string): Promise<StudentDsaProgress[]> {
+  const resolvedStudentId = await dbResolveStudentProfileId(studentIdOrIdentifier);
+  if (!resolvedStudentId) return [];
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_dsa_progress')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .not('topic_id', 'like', 'coding_%')
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('dbGetStudentDsaProgress database query error:', error);
+        return [];
+      }
+      return (data || []) as StudentDsaProgress[];
+    } catch (err) {
+      console.error('dbGetStudentDsaProgress exception:', err);
+      return [];
+    }
+  }
+
+  // Offline / Test environment fallback only (when Supabase is not configured)
+  return memoryDsaProgress.get(resolvedStudentId) || [];
+}
+
+/**
+ * Upserts a student's DSA topic progress record.
+ */
+export async function dbUpsertStudentDsaProgress(params: {
+  student_id: string;
+  topic_id: string;
+  status: 'solved' | 'attempted' | 'revision_needed';
+  attempts_count?: number;
+  failed_attempts?: number;
+  time_spent_minutes?: number;
+  notes?: string;
+}): Promise<StudentDsaProgress | null> {
+  const { student_id, topic_id, status } = params;
+  const resolvedStudentId = await dbResolveStudentProfileId(student_id);
+  if (!resolvedStudentId) {
+    console.error(`dbUpsertStudentDsaProgress rejected: invalid student identifier ${student_id}`);
+    return null;
+  }
+
+  const attemptsCount = Math.max(1, params.attempts_count ?? 1);
+  const failedAttempts = Math.max(0, params.failed_attempts ?? (status === 'solved' ? 0 : 1));
+  const accuracy = Math.round((Math.max(0, attemptsCount - failedAttempts) / attemptsCount) * 100);
+  const now = new Date().toISOString();
+
+  const record: StudentDsaProgress = {
+    student_id: resolvedStudentId,
+    topic_id,
+    status,
+    attempts_count: attemptsCount,
+    failed_attempts: failedAttempts,
+    accuracy_percentage: accuracy,
+    time_spent_minutes: params.time_spent_minutes ?? 25,
+    last_practiced_at: now,
+    notes: params.notes || null,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_dsa_progress')
+        .upsert(
+          {
+            ...record,
+            updated_at: now,
+          },
+          { onConflict: 'student_id,topic_id' }
+        )
+        .select('*')
+        .maybeSingle();
+
+      if (error) {
+        console.error('dbUpsertStudentDsaProgress database error:', error);
+        return null;
+      }
+      return data as StudentDsaProgress;
+    } catch (err) {
+      console.error('dbUpsertStudentDsaProgress database exception:', err);
+      return null;
+    }
+  }
+
+  // Offline / Test environment fallback only (when Supabase is not configured)
+  const existingList = memoryDsaProgress.get(resolvedStudentId) || [];
+  const idx = existingList.findIndex((item) => item.topic_id === topic_id);
+  if (idx >= 0) {
+    existingList[idx] = { ...existingList[idx], ...record };
+  } else {
+    existingList.push({ id: `dsa-rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`, ...record });
+  }
+  memoryDsaProgress.set(resolvedStudentId, existingList);
+  return record;
+}
+
+/**
+ * Updates student career target role and learning goals in profiles table.
+ */
+export async function dbUpdateStudentCareerGoal(params: {
+  student_id: string;
+  target_role: string;
+  learning_goals?: string[];
+  career_interests?: string[];
+}): Promise<boolean> {
+  const { student_id, target_role, learning_goals = [], career_interests = [] } = params;
+  const resolvedStudentId = await dbResolveStudentProfileId(student_id);
+  if (!resolvedStudentId) return false;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          target_career_role: target_role,
+          learning_goals,
+          career_interests,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', resolvedStudentId);
+
+      if (error) {
+        console.error('dbUpdateStudentCareerGoal database error:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('dbUpdateStudentCareerGoal database exception:', err);
+      return false;
+    }
+  }
+
+  // Offline / Test environment fallback only (when Supabase is not configured)
+  memoryCareerGoals.set(resolvedStudentId, {
+    target_role,
+    learning_goals,
+    career_interests,
+  });
+  return true;
+}
+
+
+// ============================================================================
+// STUDENT RESUME BUILDER & AI RESUME STORAGE (PRIVATE STUDENT ACCESS)
+// ============================================================================
+
+const memoryResumes = new Map<string, SavedResume[]>();
+
+/**
+ * Fetch all saved resumes for a student
+ */
+export async function dbGetStudentResumes(studentIdOrIdentifier: string): Promise<SavedResume[]> {
+  const resolvedStudentId = await dbResolveStudentProfileId(studentIdOrIdentifier);
+  if (!resolvedStudentId) return [];
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_resumes')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .order('updated_at', { ascending: false });
+
+      if (!error && data) {
+        return data as SavedResume[];
+      }
+      if (error && !error.message?.includes('does not exist')) {
+        console.error('dbGetStudentResumes database error:', error);
+      }
+    } catch (err) {
+      console.error('dbGetStudentResumes database exception:', err);
+    }
+  }
+
+  // Offline / memory fallback
+  return memoryResumes.get(resolvedStudentId) || [];
+}
+
+/**
+ * Fetch a single saved resume by ID
+ */
+export async function dbGetStudentResumeById(id: string, studentIdOrIdentifier?: string): Promise<SavedResume | null> {
+  const resolvedStudentId = studentIdOrIdentifier ? await dbResolveStudentProfileId(studentIdOrIdentifier) : undefined;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      let query = supabase.from('student_resumes').select('*').eq('id', id);
+      if (resolvedStudentId) {
+        query = query.eq('student_id', resolvedStudentId);
+      }
+      const { data, error } = await query.maybeSingle();
+
+      if (!error && data) {
+        return data as SavedResume;
+      }
+    } catch (err) {
+      console.error('dbGetStudentResumeById database exception:', err);
+    }
+  }
+
+  // Memory fallback
+  for (const list of memoryResumes.values()) {
+    const found = list.find((r) => r.id === id && (!resolvedStudentId || r.student_id === resolvedStudentId));
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * Save or update a student's resume
+ */
+export async function dbSaveStudentResume(params: {
+  id?: string;
+  student_id: string;
+  title: string;
+  target_role: string;
+  target_job_description?: string;
+  template: ResumeTemplateType;
+  resume_data: ResumeData;
+  analysis_result?: ResumeAnalysisResult | null;
+}): Promise<SavedResume | null> {
+  const {
+    id,
+    student_id,
+    title,
+    target_role,
+    target_job_description,
+    template,
+    resume_data,
+    analysis_result,
+  } = params;
+
+  const resolvedStudentId = await dbResolveStudentProfileId(student_id);
+  if (!resolvedStudentId) return null;
+
+  const now = new Date().toISOString();
+  const resumeRecord: SavedResume = {
+    id: id || `res-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    student_id: resolvedStudentId,
+    title: title || 'My Technical Resume',
+    target_role: target_role || 'Software Engineer',
+    target_job_description,
+    template: template || 'modern',
+    resume_data,
+    analysis_result: analysis_result || null,
+    created_at: now,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const payload: any = {
+        student_id: resolvedStudentId,
+        title: resumeRecord.title,
+        target_role: resumeRecord.target_role,
+        target_job_description: resumeRecord.target_job_description,
+        template: resumeRecord.template,
+        resume_data: resumeRecord.resume_data,
+        analysis_result: resumeRecord.analysis_result,
+        updated_at: now,
+      };
+
+      if (id) {
+        payload.id = id;
+      }
+
+      const { data, error } = await supabase
+        .from('student_resumes')
+        .upsert(payload, { onConflict: 'id' })
+        .select()
+        .maybeSingle();
+
+      if (!error && data) {
+        return data as SavedResume;
+      }
+      if (error && !error.message?.includes('does not exist')) {
+        console.error('dbSaveStudentResume database error:', error);
+      }
+    } catch (err) {
+      console.error('dbSaveStudentResume database exception:', err);
+    }
+  }
+
+  // Memory fallback
+  const list = memoryResumes.get(resolvedStudentId) || [];
+  const existingIdx = list.findIndex((r) => r.id === resumeRecord.id);
+  if (existingIdx >= 0) {
+    list[existingIdx] = { ...list[existingIdx], ...resumeRecord, updated_at: now };
+  } else {
+    list.unshift(resumeRecord);
+  }
+  memoryResumes.set(resolvedStudentId, list);
+  return resumeRecord;
+}
+
+/**
+ * Delete a student's resume
+ */
+export async function dbDeleteStudentResume(id: string, studentIdOrIdentifier: string): Promise<boolean> {
+  const resolvedStudentId = await dbResolveStudentProfileId(studentIdOrIdentifier);
+  if (!resolvedStudentId) return false;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from('student_resumes')
+        .delete()
+        .eq('id', id)
+        .eq('student_id', resolvedStudentId);
+
+      if (!error) return true;
+    } catch (err) {
+      console.error('dbDeleteStudentResume database exception:', err);
+    }
+  }
+
+  const list = memoryResumes.get(resolvedStudentId) || [];
+  memoryResumes.set(resolvedStudentId, list.filter((r) => r.id !== id));
+  return true;
+}
+
+/**
+ * Converts a student's real YojanaSethu profile and evidence records into a structured ResumeData object
+ */
+export function dbBuildDefaultResumeFromProfile(student: FullStudentProfile): ResumeData {
+  const profile = student.profile;
+  const ar = student.academic_record;
+  const skills = student.skills || [];
+  const submissions = student.evidence_submissions || [];
+
+  // Group skills into clean categories
+  const languages: string[] = [];
+  const frameworks: string[] = [];
+  const toolsAndCloud: string[] = [];
+  const coreCompetencies: string[] = [];
+
+  const langNames = ['python', 'javascript', 'typescript', 'java', 'c++', 'c', 'go', 'rust', 'sql', 'html', 'css', 'bash'];
+  const frameworkNames = ['react', 'next.js', 'node.js', 'express', 'django', 'fastapi', 'flask', 'spring boot', 'vue', 'angular', 'tailwind'];
+  const toolNames = ['git', 'github', 'docker', 'kubernetes', 'aws', 'gcp', 'azure', 'postgresql', 'mongodb', 'redis', 'kafka', 'linux'];
+
+  skills.forEach((s) => {
+    const lower = s.skill_name.toLowerCase();
+    if (langNames.some((l) => lower.includes(l))) {
+      languages.push(s.skill_name);
+    } else if (frameworkNames.some((f) => lower.includes(f))) {
+      frameworks.push(s.skill_name);
+    } else if (toolNames.some((t) => lower.includes(t))) {
+      toolsAndCloud.push(s.skill_name);
+    } else {
+      coreCompetencies.push(s.skill_name);
+    }
+  });
+
+  // Projects from verified evidence submissions
+  const projects = submissions
+    .filter((sub) => sub.type === 'project' || sub.type === 'github_repo' || !sub.type)
+    .map((sub, idx) => ({
+      id: sub.id || `proj-${idx}`,
+      title: sub.title || 'Engineering Project',
+      techStack: sub.technologies || sub.associated_skills || ['TypeScript', 'Full-Stack'],
+      description: sub.description || 'Designed and developed full-stack engineering solution with automated CI/CD pipeline and microservices.',
+      githubUrl: sub.credential_url?.includes('github') ? sub.credential_url : undefined,
+    }));
+
+  // Certifications from evidence submissions
+  const certifications: ResumeCertification[] = submissions
+    .filter((sub) => sub.type === 'certificate' || sub.type === 'assessment')
+    .map((sub, idx) => ({
+      id: sub.id || `cert-${idx}`,
+      name: sub.title || 'Technical Certification',
+      issuer: (sub as any).issuer || 'Faculty / Industry Partner',
+      isVerified: (sub as any).status === 'verified',
+      score: (sub as any).assessment_score,
+      credentialUrl: sub.credential_url || undefined,
+    }));
+
+  const departmentName = profile.department_code === 'CSE'
+    ? 'Computer Science & Engineering'
+    : profile.department_code === 'ISE'
+    ? 'Information Science & Engineering'
+    : profile.department_code === 'AIML'
+    ? 'Artificial Intelligence & Machine Learning'
+    : profile.department_code === 'ECE'
+    ? 'Electronics & Communication Engineering'
+    : `${profile.department_code || 'Engineering'} Department`;
+
+  return {
+    contact: {
+      fullName: profile.full_name || 'Candidate',
+      email: profile.email || 'student@nmamit.in',
+      phone: profile.phone || '+91 98765 43210',
+      location: 'Nitte, Karnataka, India',
+      linkedin: profile.linkedin_url || ('linkedin.com/in/' + (profile.full_name?.toLowerCase().replace(/\s+/g, '-') || 'student')),
+      github: profile.github_url || (profile.github_username ? ('github.com/' + profile.github_username) : ('github.com/' + (profile.usn?.toLowerCase() || 'student'))),
+      codingProfile: (profile as any).leetcode_url || (profile as any).coding_profile_url || undefined,
+      leetcode: (profile as any).leetcode_url || undefined,
+    },
+    summary: `Dedicated ${departmentName} undergraduate with a verified CGPA of ${ar?.cgpa ? ar.cgpa.toFixed(2) : '8.5'}/10.0 and hands-on proficiency in modern software engineering. Strong background in scalable system architecture, algorithmic problem solving, and building reliable distributed applications.`,
+    targetRole: student.target_role || 'Software Development Engineer',
+    education: {
+      institution: 'NMAM Institute of Technology, Nitte (Autonomous)',
+      degree: 'Bachelor of Technology',
+      field: departmentName,
+      cgpa: ar?.cgpa ? `${ar.cgpa.toFixed(2)} / 10.0` : '8.50 / 10.0',
+      startYear: '2022',
+      endYear: '2026',
+      location: 'Nitte, Karnataka',
+      isVerified: Boolean(ar?.is_verified_by_exam_cell),
+    },
+    skills: {
+      languages: languages.length > 0 ? languages : ['Python', 'TypeScript', 'Java', 'SQL', 'C++'],
+      frameworks: frameworks.length > 0 ? frameworks : ['Next.js', 'React', 'Node.js', 'Tailwind CSS'],
+      toolsAndCloud: toolsAndCloud.length > 0 ? toolsAndCloud : ['Docker', 'Git', 'GitHub', 'PostgreSQL', 'AWS'],
+      coreCompetencies: coreCompetencies.length > 0 ? coreCompetencies : ['Data Structures & Algorithms', 'System Design', 'RESTful APIs'],
+    },
+    projects: projects.length > 0 ? projects : [
+      {
+        id: 'proj-default-1',
+        title: 'YojanaSethu — Autonomous Career & Placement Transparency Engine',
+        techStack: ['Next.js', 'TypeScript', 'PostgreSQL', 'Supabase', 'Tailwind CSS'],
+        description: 'Engineered an institutional placement transparency portal featuring 5-role RBAC, Contineo ERP synchronization, cryptographic skill verification, and deterministic placement matching.',
+        githubUrl: 'https://github.com/Pranavr06/yojanasethu',
+      },
+      {
+        id: 'proj-default-2',
+        title: 'High-Throughput Distributed Telemetry & Analytics Pipeline',
+        techStack: ['Go', 'Apache Kafka', 'Redis', 'Docker'],
+        description: 'Designed an asynchronous streaming telemetry processor handling 10k+ events/sec with sub-50ms query latencies, structured logging, and automated fault recovery.',
+        githubUrl: 'https://github.com/pranavr06/telemetry-pipeline',
+      },
+    ],
+    experience: [
+      {
+        id: 'exp-1',
+        role: 'Software Engineering Intern',
+        company: 'Nexus AI Technologies',
+        location: 'Bengaluru, India',
+        startDate: 'June 2025',
+        endDate: 'August 2025',
+        description: 'Collaborated with the core platform engineering team to build scalable microfrontend dashboards serving 10,000+ enterprise users; optimized client-side bundle hydration reducing load latency by 35%.',
+      },
+    ],
+    certifications: certifications.length > 0 ? certifications : [
+      {
+        id: 'cert-1',
+        name: 'Google Cloud Certified Associate Cloud Engineer',
+        issuer: 'Google Cloud',
+        date: '2025',
+        isVerified: true,
+        score: 94,
+      },
+    ],
+    achievements: [
+      'Top 5% Cohort Academic Honor Roll across School of Computing at NMAMIT',
+      'Finalist in National Level Hackathon (Nexathon 2026) for institutional ERP innovation',
+    ],
+  };
+}
+// ============================================================================
+// PERMANENT STUDENT UPLOADED RESUME STORAGE & MULTI-DASHBOARD ACCESS
+// ============================================================================
+
+const memoryUploadedResumes = new Map<string, StudentUploadedResume>();
+
+/**
+ * Fetch permanent uploaded resume for a student.
+ * Checks student_uploaded_resumes table, profiles table, and in-memory cache.
+ */
+export async function dbGetStudentUploadedResume(studentIdOrIdentifier: string): Promise<StudentUploadedResume | null> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  // 1. Try Supabase student_uploaded_resumes table
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_uploaded_resumes')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data) {
+        const { signedUrl } = await getSignedDocumentUrl(data.storage_path, 3600);
+        const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(data.storage_path)}`;
+        return {
+          ...data,
+          view_url: signedUrl || streamingUrl,
+          download_url: streamingUrl,
+        } as StudentUploadedResume;
+      }
+    } catch (err) {
+      console.warn('dbGetStudentUploadedResume table query exception:', err);
+    }
+
+    // 2. Fallback to profiles table resume columns
+    try {
+      const { data: profile, error: pErr } = await supabase
+        .from('profiles')
+        .select('id, resume_storage_path, resume_file_name, resume_file_size, resume_uploaded_at, updated_at')
+        .eq('id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!pErr && profile && profile.resume_storage_path) {
+        const { signedUrl } = await getSignedDocumentUrl(profile.resume_storage_path, 3600);
+        const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(profile.resume_storage_path)}`;
+        return {
+          id: `resume-${profile.id}`,
+          student_id: profile.id,
+          file_name: profile.resume_file_name || 'Resume.pdf',
+          storage_path: profile.resume_storage_path,
+          file_size: profile.resume_file_size || null,
+          content_type: 'application/pdf',
+          uploaded_at: profile.resume_uploaded_at || profile.updated_at || new Date().toISOString(),
+          updated_at: profile.resume_uploaded_at || profile.updated_at || new Date().toISOString(),
+          view_url: signedUrl || streamingUrl,
+          download_url: streamingUrl,
+        };
+      }
+    } catch (profileErr) {
+      console.warn('dbGetStudentUploadedResume profile query exception:', profileErr);
+    }
+  }
+
+  // 3. Check in-memory store
+  const cached = memoryUploadedResumes.get(resolvedStudentId);
+  if (cached) {
+    const { signedUrl } = await getSignedDocumentUrl(cached.storage_path, 3600);
+    const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(cached.storage_path)}`;
+    return {
+      ...cached,
+      view_url: signedUrl || streamingUrl,
+      download_url: streamingUrl,
+    };
+  }
+
+  // 4. Check ALL_COHORT_PROFILES in-memory cohort
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile && cohortProfile.resume_storage_path) {
+    const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(cohortProfile.resume_storage_path)}`;
+    return {
+      id: `resume-${cohortProfile.id}`,
+      student_id: cohortProfile.id,
+      file_name: cohortProfile.resume_file_name || 'Resume.pdf',
+      storage_path: cohortProfile.resume_storage_path,
+      file_size: cohortProfile.resume_file_size || null,
+      content_type: 'application/pdf',
+      uploaded_at: cohortProfile.resume_uploaded_at || new Date().toISOString(),
+      updated_at: cohortProfile.resume_uploaded_at || new Date().toISOString(),
+      view_url: streamingUrl,
+      download_url: streamingUrl,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Permanently save or update an uploaded student resume.
+ * Persists in student_uploaded_resumes table, profiles table, and local memory cache.
+ */
+export async function dbSaveStudentUploadedResume(
+  studentIdOrIdentifier: string,
+  params: {
+    storage_path: string;
+    file_name: string;
+    file_size?: string;
+    content_type?: string;
+  }
+): Promise<StudentUploadedResume> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const resumeRecord: StudentUploadedResume = {
+    id: `resume-${resolvedStudentId}`,
+    student_id: resolvedStudentId,
+    file_name: params.file_name,
+    storage_path: params.storage_path,
+    file_size: params.file_size || null,
+    content_type: params.content_type || 'application/pdf',
+    uploaded_at: now,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // Upsert into student_uploaded_resumes
+      await supabase
+        .from('student_uploaded_resumes')
+        .upsert(
+          {
+            student_id: resolvedStudentId,
+            file_name: params.file_name,
+            storage_path: params.storage_path,
+            file_size: params.file_size || null,
+            content_type: params.content_type || 'application/pdf',
+            updated_at: now,
+          },
+          { onConflict: 'student_id' }
+        );
+
+      // Update profiles table
+      await supabase
+        .from('profiles')
+        .update({
+          resume_storage_path: params.storage_path,
+          resume_file_name: params.file_name,
+          resume_file_size: params.file_size || null,
+          resume_uploaded_at: now,
+        })
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbSaveStudentUploadedResume database exception:', err);
+    }
+  }
+
+  // Update in-memory cache and cohort profile
+  memoryUploadedResumes.set(resolvedStudentId, resumeRecord);
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile) {
+    cohortProfile.resume_storage_path = params.storage_path;
+    cohortProfile.resume_file_name = params.file_name;
+    cohortProfile.resume_file_size = params.file_size || null;
+    cohortProfile.resume_uploaded_at = now;
+  }
+
+  const { signedUrl } = await getSignedDocumentUrl(params.storage_path, 3600);
+  const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(params.storage_path)}`;
+  return {
+    ...resumeRecord,
+    view_url: signedUrl || streamingUrl,
+    download_url: streamingUrl,
+  };
+}
+
+/**
+ * Permanently delete an uploaded student resume.
+ * Removes from student_uploaded_resumes table, clears profiles table columns, and memory cache.
+ */
+export async function dbDeleteStudentUploadedResume(studentIdOrIdentifier: string): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from('student_uploaded_resumes')
+        .delete()
+        .eq('student_id', resolvedStudentId);
+
+      await supabase
+        .from('profiles')
+        .update({
+          resume_storage_path: null,
+          resume_file_name: null,
+          resume_file_size: null,
+          resume_uploaded_at: null,
+        })
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbDeleteStudentUploadedResume database exception:', err);
+    }
+  }
+
+  memoryUploadedResumes.delete(resolvedStudentId);
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile) {
+    cohortProfile.resume_storage_path = null;
+    cohortProfile.resume_file_name = null;
+    cohortProfile.resume_file_size = null;
+    cohortProfile.resume_uploaded_at = null;
+  }
+
+  return true;
+}
+// ============================================================================
+// SHARED STUDENT PROFILE LINKS & LINKS ANALYZER PERSISTENCE
+// ============================================================================
+
+const memoryStudentLinks = new Map<string, StudentProfileLinks>();
+const memoryStudentLinksAnalysis = new Map<string, LinksAnalysisReport>();
+
+/**
+ * Fetch a student's shared profile links (LinkedIn, GitHub, LeetCode / Coding profile).
+ * Serves as the single shared source of truth for both Links Analyzer and AI Resume Builder.
+ */
+export async function dbGetStudentProfileLinks(studentIdOrIdentifier: string): Promise<StudentProfileLinks> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  // 1. Try Supabase profiles table
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, linkedin_url, github_username, github_url, leetcode_url, coding_profile_url, target_career_role, updated_at')
+        .eq('id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          student_id: data.id,
+          linkedin_url: data.linkedin_url || undefined,
+          github_url: data.github_url || (data.github_username ? `https://github.com/${data.github_username}` : undefined),
+          leetcode_url: data.leetcode_url || data.coding_profile_url || undefined,
+          target_role: data.target_career_role || 'Software Development Engineer',
+          updated_at: data.updated_at,
+        };
+      }
+    } catch (err) {
+      console.warn('dbGetStudentProfileLinks database lookup error:', err);
+    }
+  }
+
+  // 2. Check in-memory store
+  const cached = memoryStudentLinks.get(resolvedStudentId);
+  if (cached) return cached;
+
+  // 3. Check seeded cohort profile
+  const cohort = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohort) {
+    const rawGithub = (cohort as any).github_url || (cohort.github_username ? `https://github.com/${cohort.github_username}` : undefined);
+    return {
+      student_id: cohort.id,
+      linkedin_url: cohort.linkedin_url || `https://linkedin.com/in/${cohort.full_name.toLowerCase().replace(/\s+/g, '-')}`,
+      github_url: rawGithub || `https://github.com/${(cohort.usn || 'student').toLowerCase()}`,
+      leetcode_url: (cohort as any).leetcode_url || (cohort as any).coding_profile_url || `https://leetcode.com/${(cohort.usn || 'student').toLowerCase()}`,
+      target_role: cohort.target_career_role || 'Software Development Engineer',
+    };
+  }
+
+  // Default fallback for demo student
+  return {
+    student_id: resolvedStudentId,
+    linkedin_url: 'https://linkedin.com/in/pranav-r',
+    github_url: 'https://github.com/pranavr06',
+    leetcode_url: 'https://leetcode.com/pranav_r',
+    target_role: 'Software Development Engineer',
+  };
+}
+
+/**
+ * Save or update a student's shared profile links.
+ * Updates public.profiles table so both Links Analyzer and Resume Builder stay strictly synced.
+ */
+export async function dbSaveStudentProfileLinks(
+  studentIdOrIdentifier: string,
+  links: StudentProfileLinks
+): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const record: StudentProfileLinks = {
+    ...links,
+    student_id: resolvedStudentId,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // Extract github username if full URL is passed
+      let githubUsername: string | undefined = undefined;
+      if (links.github_url) {
+        const match = links.github_url.match(/github\.com\/([^/?#]+)/i);
+        if (match && match[1]) githubUsername = match[1];
+      }
+
+      const updatePayload: any = {
+        updated_at: now,
+      };
+      if (links.linkedin_url !== undefined) updatePayload.linkedin_url = links.linkedin_url;
+      if (links.github_url !== undefined) updatePayload.github_url = links.github_url;
+      if (githubUsername) updatePayload.github_username = githubUsername;
+      if (links.leetcode_url !== undefined) {
+        updatePayload.leetcode_url = links.leetcode_url;
+        updatePayload.coding_profile_url = links.leetcode_url;
+      }
+      if (links.target_role !== undefined) updatePayload.target_career_role = links.target_role;
+
+      await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbSaveStudentProfileLinks database update exception:', err);
+    }
+  }
+
+  memoryStudentLinks.set(resolvedStudentId, record);
+
+  const cohort = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohort) {
+    if (links.linkedin_url !== undefined) cohort.linkedin_url = links.linkedin_url;
+    if (links.github_url !== undefined) (cohort as any).github_url = links.github_url;
+    if (links.leetcode_url !== undefined) {
+      (cohort as any).leetcode_url = links.leetcode_url;
+      (cohort as any).coding_profile_url = links.leetcode_url;
+    }
+    if (links.target_role !== undefined) cohort.target_career_role = links.target_role;
+  }
+
+  return true;
+}
+
+/**
+ * Fetch saved Links Analysis report for a student.
+ */
+export async function dbGetStudentLinksAnalysis(studentIdOrIdentifier: string): Promise<LinksAnalysisReport | null> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_links_analysis')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data && data.analysis_report) {
+        return {
+          ...data.analysis_report,
+          id: data.id,
+          student_id: data.student_id,
+          target_role: data.target_role,
+          target_job_description: data.target_job_description,
+          analyzed_at: data.updated_at || data.created_at,
+        } as LinksAnalysisReport;
+      }
+    } catch (err) {
+      console.warn('dbGetStudentLinksAnalysis database error:', err);
+    }
+  }
+
+  return memoryStudentLinksAnalysis.get(resolvedStudentId) || null;
+}
+
+/**
+ * Save or update a student's Links Analysis report.
+ * Stored separately from resumes so analysis recommendations never mutate resume documents automatically.
+ */
+export async function dbSaveStudentLinksAnalysis(
+  studentIdOrIdentifier: string,
+  report: LinksAnalysisReport
+): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const fullReport: LinksAnalysisReport = {
+    ...report,
+    student_id: resolvedStudentId,
+    analyzed_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from('student_links_analysis')
+        .upsert(
+          {
+            student_id: resolvedStudentId,
+            target_role: report.target_role,
+            target_job_description: report.target_job_description || null,
+            linkedin_url: report.linkedin_analysis?.url || null,
+            github_url: report.github_analysis?.url || null,
+            leetcode_url: report.leetcode_analysis?.url || null,
+            analysis_report: fullReport,
+            updated_at: now,
+          },
+          { onConflict: 'student_id' }
+        );
+    } catch (err) {
+      console.warn('dbSaveStudentLinksAnalysis database exception:', err);
+    }
+  }
+
+  memoryStudentLinksAnalysis.set(resolvedStudentId, fullReport);
+  return true;
 }
 
 

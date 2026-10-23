@@ -87,15 +87,38 @@ export interface Profile {
   semester?: number | null;
   graduation_year?: number | null;
   github_username?: string | null;
+  github_url?: string | null;
   linkedin_url?: string | null;
+  leetcode_url?: string | null;
+  coding_profile_url?: string | null;
   portfolio_url?: string | null;
   recruiter_consent?: boolean;
   designation?: string | null;
   assigned_specializations?: string[] | null;
   company_name?: string | null;
   recruiter_title?: string | null;
+  target_career_role?: string | null;
+  learning_goals?: string[] | null;
+  career_interests?: string[] | null;
+  resume_storage_path?: string | null;
+  resume_file_name?: string | null;
+  resume_file_size?: string | null;
+  resume_uploaded_at?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface StudentUploadedResume {
+  id: string;
+  student_id: string;
+  file_name: string;
+  storage_path: string;
+  file_size?: string | null;
+  content_type?: string | null;
+  uploaded_at: string;
+  updated_at: string;
+  view_url?: string | null;
+  download_url?: string | null;
 }
 
 export interface AcademicRecord {
@@ -194,6 +217,41 @@ export interface Company {
   industry?: string | null;
   tier?: string;
   headquarters?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+}
+
+export interface RecruiterProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  designation?: string | null;
+  company_name: string;
+  company_id?: string | null;
+  company?: Company | null;
+  website?: string | null;
+  industry?: string | null;
+  tier?: string | null;
+  headquarters?: string | null;
+  avatar_url?: string | null;
+  linkedin_url?: string | null;
+  created_at?: string;
+}
+
+export interface OnboardRecruiterPayload {
+  fullName: string;
+  email: string;
+  password: string;
+  phone?: string;
+  designation?: string;
+  companyName: string;
+  website?: string;
+  industry?: string;
+  tier?: string;
+  headquarters?: string;
+  logoUrl?: string;
+  linkedinUrl?: string;
 }
 
 export interface PlacementDrive {
@@ -505,6 +563,295 @@ export interface VerifiedCredentialSummary {
   assessment_score: number;
   verification_badge: boolean;
   credential_url?: string | null;
+}
+
+// ========================================================
+// DSA PROGRESS & SKILL GAP ANALYZER TYPES
+// ========================================================
+
+export interface StudentDsaProgress {
+  id?: string;
+  student_id: string;
+  topic_id: string;
+  status: 'solved' | 'attempted' | 'revision_needed';
+  attempts_count: number;
+  failed_attempts: number;
+  accuracy_percentage: number;
+  time_spent_minutes: number;
+  last_practiced_at: string;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type TargetCareerRole = 'Software Developer' | 'AI/ML Engineer' | 'Cybersecurity Analyst';
+
+export type SkillStatus = 'verified_strength' | 'demonstrated_gap' | 'unassessed_missing';
+export type SkillPriority = 'critical' | 'high' | 'medium';
+
+export interface EvaluatedSkill {
+  skill_name: string;
+  category: string;
+  status: SkillStatus;
+  priority: SkillPriority;
+  required_level: 'foundational' | 'intermediate' | 'advanced';
+  demonstrated_level: 'none' | 'foundational' | 'intermediate' | 'advanced';
+  weight: number;
+  importance: 'mandatory' | 'preferred';
+  evidence_summary: string;
+  reason: string;
+  recommended_action?: {
+    activity: string;
+    resource_title: string;
+    resource_url: string;
+    resource_type: 'practice' | 'project' | 'course' | 'doc';
+    measurable_completion_criterion: string;
+  };
+}
+
+export interface DsaPatternMetrics {
+  total_patterns: number;
+  solved_count: number;
+  overall_accuracy: number;
+  total_attempts: number;
+  failed_attempts: number;
+  solved_by_difficulty: {
+    easy: number;
+    medium: number;
+    hard: number;
+  };
+  weak_categories: {
+    category: string;
+    accuracy: number;
+    unsolved_critical: number;
+  }[];
+  strong_categories: string[];
+  algorithmic_readiness_score: number;
+}
+
+export interface SkillGapAnalysisResult {
+  student_id: string;
+  student_name: string;
+  target_role: TargetCareerRole;
+  role_readiness_score: number;
+  verified_strengths_count: number;
+  demonstrated_gaps_count: number;
+  unassessed_skills_count: number;
+  skills: EvaluatedSkill[];
+  dsa_metrics: DsaPatternMetrics;
+  prioritized_roadmap: {
+    priority: SkillPriority;
+    skill_or_topic: string;
+    reason: string;
+    suggested_activity: string;
+    measurable_completion_criterion: string;
+    resource_link?: string;
+  }[];
+  transparency_note: string;
+}
+
+
+// ========================================================
+// AI RESUME BUILDER & RESUME ANALYZER TYPES
+// ========================================================
+
+export type ResumeTemplateType = 'modern' | 'minimal' | 'classic' | 'technical';
+
+export interface ResumeContact {
+  fullName: string;
+  email: string;
+  phone: string;
+  location: string;
+  linkedin?: string;
+  github?: string;
+  codingProfile?: string;
+  leetcode?: string;
+  portfolio?: string;
+}
+
+export interface ResumeEducation {
+  institution: string;
+  degree: string;
+  field: string;
+  cgpa: string;
+  startYear: string;
+  endYear: string;
+  location?: string;
+  isVerified?: boolean;
+}
+
+export interface ResumeProject {
+  id: string;
+  title: string;
+  role?: string;
+  techStack: string[];
+  description: string;
+  highlights?: string[];
+  githubUrl?: string;
+  liveUrl?: string;
+}
+
+export interface ResumeExperience {
+  id: string;
+  role: string;
+  company: string;
+  location?: string;
+  startDate: string;
+  endDate: string;
+  description: string;
+  highlights?: string[];
+}
+
+export interface ResumeCertification {
+  id: string;
+  name: string;
+  issuer: string;
+  date?: string;
+  isVerified?: boolean;
+  score?: number;
+  credentialUrl?: string;
+}
+
+export interface ResumeSkills {
+  languages: string[];
+  frameworks: string[];
+  toolsAndCloud: string[];
+  coreCompetencies: string[];
+  softSkills?: string[];
+}
+
+export interface ResumeData {
+  contact: ResumeContact;
+  summary: string;
+  targetRole: string;
+  targetJobDescription?: string;
+  education: ResumeEducation;
+  skills: ResumeSkills;
+  projects: ResumeProject[];
+  experience: ResumeExperience[];
+  certifications: ResumeCertification[];
+  achievements: string[];
+}
+
+export interface ResumeAnalysisIssue {
+  category: 'clarity' | 'structure' | 'relevance' | 'ats_readability' | 'quantification' | 'missing_info';
+  severity: 'critical' | 'warning' | 'info';
+  description: string;
+  recommendation: string;
+}
+
+export interface ResumeAnalysisMissingSkill {
+  skill: string;
+  category: string;
+  importance: 'high' | 'medium' | 'low';
+  reason?: string;
+}
+
+export interface ResumeAnalysisKeywordMatch {
+  keyword: string;
+  foundInResume: boolean;
+  suggestion: string;
+}
+
+export interface ResumeAnalysisScoreBreakdown {
+  clarity: number;
+  structure: number;
+  relevance: number;
+  atsReadability: number;
+  impactMetrics: number;
+}
+
+export interface ResumeAnalysisResult {
+  atsScoreEstimate: number; // 0-100
+  scoreBreakdown: ResumeAnalysisScoreBreakdown;
+  summaryFeedback: string;
+  strengths: string[];
+  issues: ResumeAnalysisIssue[];
+  recommendations: string[];
+  missingSkills: ResumeAnalysisMissingSkill[];
+  matchedSkills: string[];
+  keywordOptimization: ResumeAnalysisKeywordMatch[];
+  targetRoleAlignment: string;
+  disclaimer: string;
+  extractedSections?: Partial<ResumeData>;
+}
+
+export interface SavedResume {
+  id: string;
+  student_id: string;
+  title: string;
+  target_role: string;
+  target_job_description?: string;
+  template: ResumeTemplateType;
+  resume_data: ResumeData;
+  analysis_result?: ResumeAnalysisResult | null;
+  created_at: string;
+  updated_at: string;
+}
+// ========================================================
+// LINKS ANALYZER & PROFILE AUDIT TYPES
+// ========================================================
+
+export interface StudentProfileLinks {
+  student_id?: string;
+  linkedin_url?: string;
+  github_url?: string;
+  leetcode_url?: string;
+  target_role?: string;
+  target_job_description?: string;
+  updated_at?: string;
+}
+
+export interface LinksAnalysisReport {
+  id?: string;
+  student_id?: string;
+  target_role: string;
+  target_job_description?: string;
+  analyzed_at: string;
+  ai_provider: 'gemini' | 'deterministic_fallback';
+  overall_assessment: {
+    readiness_score: number; // 0 - 100
+    executive_summary: string;
+    visibility_rating: 'Exceptional' | 'Competitive' | 'Developing' | 'Needs Attention';
+    key_takeaway: string;
+  };
+  strengths: string[];
+  missing_information: string[];
+  improvement_areas: string[];
+  linkedin_analysis?: {
+    url?: string;
+    status: 'accessible' | 'limited' | 'not_provided';
+    headline_critique: string;
+    summary_critique: string;
+    missing_sections: string[];
+    experience_projects_critique: string;
+    skills_recommendations: string[];
+    actionable_tips: string[];
+  };
+  github_analysis?: {
+    url?: string;
+    status: 'accessible' | 'limited' | 'not_provided';
+    portfolio_completeness: string;
+    repository_presentation_critique: string;
+    readme_documentation_critique: string;
+    code_quality_and_stack: string;
+    highlighted_projects: string[];
+    actionable_tips: string[];
+  };
+  leetcode_analysis?: {
+    url?: string;
+    status: 'accessible' | 'limited' | 'not_provided';
+    problem_solving_tier: string;
+    difficulty_distribution_critique: string;
+    dsa_preparation_gaps: string[];
+    recommended_practice_topics: string[];
+    actionable_tips: string[];
+  };
+  personalized_roadmap: {
+    week: number;
+    phase_title: string;
+    tasks: string[];
+  }[];
 }
 
 

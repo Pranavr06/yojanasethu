@@ -30,6 +30,7 @@ import {
   Code2,
   Award,
   BookOpen,
+  Target,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -229,6 +230,22 @@ export default function Sidebar({
                   </Link>
 
                   <Link
+                    href="/student/skill-gap"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/skill-gap')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <Target className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="flex-1">AI Skill Gap Analyzer</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      Audit
+                    </span>
+                  </Link>
+
+                  <Link
                     href="/student/mock-interview"
                     onClick={onClose}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
@@ -245,19 +262,6 @@ export default function Sidebar({
                   </Link>
 
                   <Link
-                    href="/student/roadmap"
-                    onClick={onClose}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                      pathname.startsWith('/student/roadmap')
-                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
-                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
-                    }`}
-                  >
-                    <Calendar className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                    <span>Career Roadmap</span>
-                  </Link>
-
-                  <Link
                     href="/student/resume-builder"
                     onClick={onClose}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
@@ -266,21 +270,27 @@ export default function Sidebar({
                         : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
                     }`}
                   >
-                    <FileText className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                    <span>Resume Builder</span>
+                    <FileText className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                    <span className="flex-1">AI Resume Builder</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                      ATS AI
+                    </span>
                   </Link>
 
                   <Link
-                    href="/student/dsa-tracker"
+                    href="/student/links-analyzer"
                     onClick={onClose}
                     className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                      pathname.startsWith('/student/dsa-tracker') || pathname.startsWith('/student/dsa')
+                      pathname.startsWith('/student/links-analyzer') || pathname.startsWith('/student/dsa-tracker')
                         ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
                         : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
                     }`}
                   >
-                    <Code2 className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                    <span>DSA Tracker</span>
+                    <ExternalLink className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <span className="flex-1">Links Analyzer</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                      AI Audit
+                    </span>
                   </Link>
 
                   <Link

@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import MyResumeCard from '@/components/student/MyResumeCard';
 import { useAuth } from '@/lib/authContext';
 import {
   LayoutDashboard,
@@ -33,6 +34,33 @@ export default function StudentDashboard() {
   const { user } = useAuth();
   const [studentName, setStudentName] = useState(user?.full_name || 'Pranav R');
   const [usn, setUsn] = useState(user?.usn || '4NM22CS120');
+  const [dsaSolved, setDsaSolved] = useState<number | null>(null);
+  const [readinessScore, setReadinessScore] = useState<number | null>(null);
+  const [targetRole, setTargetRole] = useState<string>('Software Developer');
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const dsaRes = await fetch('/api/student/dsa');
+        if (dsaRes.ok) {
+          const dsaData = await dsaRes.json();
+          if (dsaData.records && Array.isArray(dsaData.records)) {
+            const solved = dsaData.records.filter((r: any) => r.status === 'solved').length;
+            setDsaSolved(solved);
+          }
+        }
+        const gapRes = await fetch('/api/student/skill-gap');
+        if (gapRes.ok) {
+          const gapData = await gapRes.json();
+          if (gapData.analysis) {
+            setReadinessScore(gapData.analysis.role_readiness_score);
+            setTargetRole(gapData.analysis.target_role);
+          }
+        }
+      } catch {}
+    }
+    fetchStats();
+  }, []);
 
   const skills = [
     { name: 'Python & AI Engineering', level: 85 },
@@ -97,7 +125,7 @@ export default function StudentDashboard() {
               className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-indigo-700 shadow-md hover:bg-indigo-50 transition-all"
             >
               <FileText className="w-4 h-4" />
-              <span>Build ATS Resume</span>
+              <span>AI Resume Builder & ATS Analyzer</span>
             </Link>
 
             <Link
@@ -139,29 +167,29 @@ export default function StudentDashboard() {
         </Link>
 
         <Link
-          href="/student/career-coach"
+          href="/student/skill-gap"
           className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-purple-300 dark:hover:border-purple-800 transition-all group"
         >
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>Placement Readiness</span>
             <Target className="w-4 h-4 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
           </div>
-          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">84%</p>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{readinessScore !== null ? `${readinessScore}%` : '—'}</p>
           <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
-            Super Dream Role Target
+            {targetRole}
           </p>
         </Link>
 
         <Link
-          href="/student/dsa-tracker"
+          href="/student/links-analyzer"
           className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-800 transition-all group"
         >
           <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
             <span>DSA Patterns Solved</span>
             <Code2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
           </div>
-          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">14 / 20</p>
-          <p className="mt-1 text-[11px] text-slate-400">70% Pattern Mastery</p>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{dsaSolved !== null ? `${dsaSolved} / 20` : '— / 20'}</p>
+          <p className="mt-1 text-[11px] text-slate-400">{dsaSolved !== null ? `${Math.round((dsaSolved / 20) * 100)}% Pattern Mastery` : 'Pattern mastery'}</p>
         </Link>
 
         <Link
@@ -177,6 +205,11 @@ export default function StudentDashboard() {
             Faculty Endorsed
           </p>
         </Link>
+      </section>
+
+      {/* Permanent Student Resume Storage Card */}
+      <section>
+        <MyResumeCard />
       </section>
 
       {/* Unified Modules Navigation Hub (Merged from All Sections & Existing Modules) */}
@@ -354,33 +387,6 @@ export default function StudentDashboard() {
             </div>
           </Link>
 
-          {/* 7. Career Roadmap */}
-          <Link
-            href="/student/roadmap"
-            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
-          >
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div className="p-2.5 rounded-xl bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400 group-hover:bg-cyan-600 group-hover:text-white transition-colors">
-                  <Calendar className="w-5 h-5" />
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
-                  Roadmap
-                </span>
-              </div>
-              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                Career Roadmap
-              </h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Step-by-step 30-day targeted preparation plan with weekly milestones for Tier 1 campus drives.
-              </p>
-            </div>
-            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-cyan-600 dark:text-cyan-400 font-semibold">
-              <span>View Weekly Plan</span>
-              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-            </div>
-          </Link>
-
           {/* 8. Resume Builder */}
           <Link
             href="/student/resume-builder"
@@ -396,10 +402,10 @@ export default function StudentDashboard() {
                 </span>
               </div>
               <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                Resume Builder
+                AI Resume Builder & ATS Analyzer
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Build ATS-optimized resumes with real-time paper preview, auto-fill from ERP records, and PDF export.
+                Upload PDF/DOCX or sync verified ERP records. Run live AI ATS audit, get actionable gap suggestions, and export clean PDF resumes.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-rose-600 dark:text-rose-400 font-semibold">
