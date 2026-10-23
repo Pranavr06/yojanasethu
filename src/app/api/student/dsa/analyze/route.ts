@@ -14,6 +14,7 @@ import {
   AggregatedDsaStats,
   STANDARD_DSA_TOPICS,
 } from '@/types/dsa';
+import { validateStudentSession } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,17 @@ const CANDIDATE_GEMINI_MODELS = [
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const studentId = searchParams.get('student_id') || 'student-mock-1';
+    const clientSuppliedStudentId = searchParams.get('student_id') || undefined;
+
+    // Verify student session server-side
+    const authResult = await validateStudentSession(req, clientSuppliedStudentId);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
 
     const reports = await getDsaReports(studentId);
     return NextResponse.json({ reports });
@@ -42,7 +53,16 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { student_id } = body;
-    const studentId = student_id || 'student-mock-1';
+
+    // Verify student session server-side
+    const authResult = await validateStudentSession(req, student_id);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
 
     const [profiles, stats] = await Promise.all([
       getCodingProfiles(studentId),

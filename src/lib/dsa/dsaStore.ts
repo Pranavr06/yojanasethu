@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from '@/lib/db';
+import { supabase, isSupabaseConfigured, dbResolveStudentProfileId } from '@/lib/db';
 import {
   StudentCodingProfile,
   PlatformStatistics,
@@ -9,7 +9,7 @@ import {
   STANDARD_DSA_TOPICS,
 } from '@/types/dsa';
 
-// In-memory fallback cache (used when Supabase tables are not yet migrated)
+// In-memory fallback cache (used when Supabase is completely unavailable)
 const memoryProfiles = new Map<string, StudentCodingProfile[]>();
 const memoryStats = new Map<string, PlatformStatistics[]>();
 const memoryReports = new Map<string, DsaAiAnalysisReport[]>();
@@ -29,99 +29,202 @@ function isTableMissingError(error: any): boolean {
  * 1. PROFILES MANAGEMENT
  */
 export async function getCodingProfiles(studentId: string): Promise<StudentCodingProfile[]> {
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+
   if (isSupabaseConfigured && supabase) {
+    // 1. Try student_coding_profiles first (if table exists)
     try {
       const { data, error } = await supabase
         .from('student_coding_profiles')
         .select('*')
-        .eq('student_id', studentId)
+        .eq('student_id', resolvedId)
         .order('created_at', { ascending: true });
 
-      if (!error && data) {
+      if (!error && data && data.length > 0) {
+        memoryProfiles.set(resolvedId, data as StudentCodingProfile[]);
         return data as StudentCodingProfile[];
       }
-      if (error && !isTableMissingError(error)) {
-        console.warn('Supabase getCodingProfiles error:', error.message);
+    } catch {
+      // fallback to student_dsa_progress
+    }
+
+    // 2. Query student_dsa_progress where topic_id starts with coding_profile:
+    try {
+      const { data, error } = await supabase
+        .from('student_dsa_progress')
+        .select('*')
+        .eq('student_id', resolvedId)
+        .like('topic_id', 'coding_profile:%')
+        .order('created_at', { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        const loadedProfiles: StudentCodingProfile[] = [];
+        for (const row of data) {
+          if (!row.notes) continue;
+          try {
+            const parsed = JSON.parse(row.notes);
+            const prof: StudentCodingProfile = {
+              id: parsed.id || `profile-${row.id}`,
+              student_id: resolvedId,
+              platform: parsed.platform || (row.topic_id.replace('coding_profile:', '') as CodingPlatform),
+              profile_url: parsed.profile_url || '',
+              username: parsed.username || '',
+              connection_status: parsed.connection_status || 'connected',
+              is_manual: parsed.is_manual ?? (parsed.platform !== 'leetcode' && parsed.platform !== 'codeforces'),
+              last_synced_at: parsed.last_synced_at || row.updated_at,
+              created_at: parsed.created_at || row.created_at,
+            };
+            loadedProfiles.push(prof);
+          } catch {
+            // Ignore malformed JSON
+          }
+        }
+        if (loadedProfiles.length > 0) {
+          memoryProfiles.set(resolvedId, loadedProfiles);
+          return loadedProfiles;
+        }
       }
     } catch (e) {
-      // fallback
+      console.warn('Supabase getCodingProfiles student_dsa_progress fallback error:', e);
     }
   }
 
-  return memoryProfiles.get(studentId) || [];
+  return memoryProfiles.get(resolvedId) || [];
 }
 
 export async function addCodingProfile(
   studentId: string,
   params: { platform: CodingPlatform; profile_url: string; username: string }
 ): Promise<{ profile: StudentCodingProfile; isDuplicate: boolean }> {
-  const existing = await getCodingProfiles(studentId);
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+
+  const existing = await getCodingProfiles(resolvedId);
   const duplicate = existing.find((p) => p.platform === params.platform);
   if (duplicate) {
     return { profile: duplicate, isDuplicate: true };
   }
 
+  const now = new Date().toISOString();
   const newProfile: StudentCodingProfile = {
     id: `profile-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-    student_id: studentId,
+    student_id: resolvedId,
     platform: params.platform,
     profile_url: params.profile_url,
     username: params.username,
     connection_status: 'connected',
     is_manual: params.platform !== 'leetcode' && params.platform !== 'codeforces',
     last_synced_at: null,
-    created_at: new Date().toISOString(),
+    created_at: now,
   };
 
   if (isSupabaseConfigured && supabase) {
+    // 1. Try student_coding_profiles
     try {
-      const { data, error } = await supabase
-        .from('student_coding_profiles')
-        .insert({
-          student_id: studentId,
-          platform: params.platform,
-          profile_url: params.profile_url,
-          username: params.username,
-          connection_status: newProfile.connection_status,
-          is_manual: newProfile.is_manual,
-        })
-        .select('*')
-        .single();
+      await supabase.from('student_coding_profiles').insert({
+        student_id: resolvedId,
+        platform: params.platform,
+        profile_url: params.profile_url,
+        username: params.username,
+        connection_status: newProfile.connection_status,
+        is_manual: newProfile.is_manual,
+      });
+    } catch {
+      // Table may not exist yet
+    }
 
-      if (!error && data) {
-        return { profile: data as StudentCodingProfile, isDuplicate: false };
-      }
-    } catch (e) {
-      // fallback
+    // 2. Persist to student_dsa_progress
+    try {
+      const topicId = `coding_profile:${params.platform}`;
+      await supabase.from('student_dsa_progress').upsert(
+        {
+          student_id: resolvedId,
+          topic_id: topicId,
+          status: 'solved',
+          attempts_count: 1,
+          failed_attempts: 0,
+          notes: JSON.stringify(newProfile),
+          updated_at: now,
+        },
+        { onConflict: 'student_id,topic_id' }
+      );
+    } catch (err) {
+      console.error('Failed to upsert coding profile into student_dsa_progress:', err);
     }
   }
 
-  const current = memoryProfiles.get(studentId) || [];
+  const current = memoryProfiles.get(resolvedId) || [];
   current.push(newProfile);
-  memoryProfiles.set(studentId, current);
+  memoryProfiles.set(resolvedId, current);
   return { profile: newProfile, isDuplicate: false };
 }
 
-export async function removeCodingProfile(studentId: string, profileId: string): Promise<boolean> {
+export async function removeCodingProfile(studentId: string, profileIdOrPlatform: string): Promise<boolean> {
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+
   if (isSupabaseConfigured && supabase) {
+    // 1. Try deleting from student_coding_profiles
     try {
-      const { error } = await supabase
+      await supabase
         .from('student_coding_profiles')
         .delete()
-        .eq('student_id', studentId)
-        .eq('id', profileId);
+        .eq('student_id', resolvedId)
+        .or(`id.eq.${profileIdOrPlatform},platform.eq.${profileIdOrPlatform}`);
+    } catch {
+      // Ignore
+    }
 
-      if (!error) return true;
+    // 2. Remove from student_dsa_progress
+    try {
+      const { data: rows } = await supabase
+        .from('student_dsa_progress')
+        .select('*')
+        .eq('student_id', resolvedId)
+        .like('topic_id', 'coding_profile:%');
+
+      if (rows && rows.length > 0) {
+        for (const r of rows) {
+          let matches = false;
+          if (r.topic_id === `coding_profile:${profileIdOrPlatform}`) {
+            matches = true;
+          } else if (r.notes) {
+            try {
+              const p = JSON.parse(r.notes);
+              if (p.id === profileIdOrPlatform || p.platform === profileIdOrPlatform) {
+                matches = true;
+              }
+            } catch {}
+          }
+
+          if (matches) {
+            const platform = r.topic_id.replace('coding_profile:', '');
+            // Delete profile row
+            await supabase.from('student_dsa_progress').delete().eq('id', r.id);
+            // Also delete associated stats row if present
+            await supabase
+              .from('student_dsa_progress')
+              .delete()
+              .eq('student_id', resolvedId)
+              .eq('topic_id', `coding_stats:${platform}`);
+          }
+        }
+      }
     } catch (e) {
-      // fallback
+      console.warn('Error removing coding profile from student_dsa_progress:', e);
     }
   }
 
-  const current = memoryProfiles.get(studentId) || [];
+  const current = memoryProfiles.get(resolvedId) || [];
   memoryProfiles.set(
-    studentId,
-    current.filter((p) => p.id !== profileId)
+    resolvedId,
+    current.filter((p) => p.id !== profileIdOrPlatform && p.platform !== profileIdOrPlatform)
   );
+
+  const curStats = memoryStats.get(resolvedId) || [];
+  memoryStats.set(
+    resolvedId,
+    curStats.filter((s) => s.platform !== profileIdOrPlatform)
+  );
+
   return true;
 }
 
@@ -132,10 +235,14 @@ export async function saveCodingStats(
   studentId: string,
   stats: PlatformStatistics
 ): Promise<void> {
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+  const now = new Date().toISOString();
+
   if (isSupabaseConfigured && supabase) {
+    // 1. Try coding_statistics
     try {
-      const { error } = await supabase.from('coding_statistics').insert({
-        student_id: studentId,
+      await supabase.from('coding_statistics').insert({
+        student_id: resolvedId,
         platform: stats.platform,
         total_solved: stats.total_solved,
         easy_solved: stats.easy_solved,
@@ -148,56 +255,96 @@ export async function saveCodingStats(
         global_ranking: stats.global_ranking,
         current_streak: stats.current_streak,
         topic_statistics: stats.topic_statistics || {},
-        statistics_date: stats.last_synced_at,
+        statistics_date: stats.last_synced_at || now,
       });
 
-      if (!error) {
-        // Also update last_synced_at in student_coding_profiles
-        await supabase
-          .from('student_coding_profiles')
-          .update({
-            last_synced_at: stats.last_synced_at,
-            connection_status: stats.sync_error ? 'error' : 'synced',
-          })
-          .eq('student_id', studentId)
-          .eq('platform', stats.platform);
-        return;
+      await supabase
+        .from('student_coding_profiles')
+        .update({
+          last_synced_at: stats.last_synced_at || now,
+          connection_status: stats.sync_error ? 'error' : 'synced',
+        })
+        .eq('student_id', resolvedId)
+        .eq('platform', stats.platform);
+    } catch {
+      // Table may not exist yet
+    }
+
+    // 2. Persist to student_dsa_progress
+    try {
+      const statsTopicId = `coding_stats:${stats.platform}`;
+      await supabase.from('student_dsa_progress').upsert(
+        {
+          student_id: resolvedId,
+          topic_id: statsTopicId,
+          status: 'solved',
+          attempts_count: 1,
+          failed_attempts: 0,
+          notes: JSON.stringify(stats),
+          updated_at: now,
+        },
+        { onConflict: 'student_id,topic_id' }
+      );
+
+      // Also update the profile row in student_dsa_progress with latest sync and stats
+      const profTopicId = `coding_profile:${stats.platform}`;
+      const { data: profRow } = await supabase
+        .from('student_dsa_progress')
+        .select('*')
+        .eq('student_id', resolvedId)
+        .eq('topic_id', profTopicId)
+        .maybeSingle();
+
+      if (profRow && profRow.notes) {
+        try {
+          const parsed = JSON.parse(profRow.notes);
+          parsed.last_synced_at = stats.last_synced_at || now;
+          parsed.connection_status = stats.sync_error ? 'error' : 'synced';
+          parsed.stats = stats;
+          await supabase
+            .from('student_dsa_progress')
+            .update({
+              notes: JSON.stringify(parsed),
+              updated_at: now,
+            })
+            .eq('id', profRow.id);
+        } catch {}
       }
     } catch (e) {
-      // fallback
+      console.warn('Failed to save stats in student_dsa_progress:', e);
     }
   }
 
-  const current = memoryStats.get(studentId) || [];
-  // update or add
+  const current = memoryStats.get(resolvedId) || [];
   const idx = current.findIndex((s) => s.platform === stats.platform);
   if (idx !== -1) {
     current[idx] = stats;
   } else {
     current.push(stats);
   }
-  memoryStats.set(studentId, current);
+  memoryStats.set(resolvedId, current);
 
-  // update memory profile
-  const userProfs = memoryProfiles.get(studentId) || [];
+  const userProfs = memoryProfiles.get(resolvedId) || [];
   const prof = userProfs.find((p) => p.platform === stats.platform);
   if (prof) {
-    prof.last_synced_at = stats.last_synced_at;
+    prof.last_synced_at = stats.last_synced_at || now;
     prof.connection_status = stats.sync_error ? 'error' : 'synced';
   }
 }
 
 export async function getLatestCodingStats(studentId: string): Promise<PlatformStatistics[]> {
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+
   if (isSupabaseConfigured && supabase) {
+    // 1. Try coding_statistics
     try {
       const { data, error } = await supabase
         .from('coding_statistics')
         .select('*')
-        .eq('student_id', studentId)
+        .eq('student_id', resolvedId)
         .order('statistics_date', { ascending: false });
 
       if (!error && data && data.length > 0) {
-        // Deduplicate latest per platform
         const latestMap = new Map<string, PlatformStatistics>();
         data.forEach((row: any) => {
           if (!latestMap.has(row.platform)) {
@@ -222,14 +369,67 @@ export async function getLatestCodingStats(studentId: string): Promise<PlatformS
             });
           }
         });
-        return Array.from(latestMap.values());
+        const list = Array.from(latestMap.values());
+        memoryStats.set(resolvedId, list);
+        return list;
+      }
+    } catch {
+      // fallback
+    }
+
+    // 2. Query student_dsa_progress for coding_stats:% or stats embedded in coding_profile:%
+    try {
+      const { data, error } = await supabase
+        .from('student_dsa_progress')
+        .select('*')
+        .eq('student_id', resolvedId)
+        .or('topic_id.like.coding_stats:%,topic_id.like.coding_profile:%')
+        .order('updated_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const statsMap = new Map<string, PlatformStatistics>();
+
+        // First look for direct coding_stats:% rows
+        for (const row of data) {
+          if (row.topic_id.startsWith('coding_stats:') && row.notes) {
+            try {
+              const s: PlatformStatistics = JSON.parse(row.notes);
+              if (s && s.platform && !statsMap.has(s.platform)) {
+                statsMap.set(s.platform, s);
+              }
+            } catch {}
+          }
+        }
+
+        // Next check if any coding_profile has embedded stats
+        for (const row of data) {
+          if (row.topic_id.startsWith('coding_profile:') && row.notes) {
+            try {
+              const p = JSON.parse(row.notes);
+              if (p.platform && !statsMap.has(p.platform) && p.stats) {
+                statsMap.set(p.platform, {
+                  ...p.stats,
+                  platform: p.platform,
+                  username: p.username || '',
+                  profile_url: p.profile_url || '',
+                });
+              }
+            } catch {}
+          }
+        }
+
+        if (statsMap.size > 0) {
+          const list = Array.from(statsMap.values());
+          memoryStats.set(resolvedId, list);
+          return list;
+        }
       }
     } catch (e) {
-      // fallback
+      console.warn('Error fetching stats from student_dsa_progress:', e);
     }
   }
 
-  return memoryStats.get(studentId) || [];
+  return memoryStats.get(resolvedId) || [];
 }
 
 /**
@@ -335,50 +535,96 @@ export function aggregateCodingStats(
  * 4. AI REPORTS MANAGEMENT
  */
 export async function saveDsaReport(studentId: string, report: DsaAiAnalysisReport): Promise<void> {
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+  const now = new Date().toISOString();
+
   if (isSupabaseConfigured && supabase) {
+    // 1. Try dsa_ai_reports
     try {
-      const { error } = await supabase.from('dsa_ai_reports').insert({
-        student_id: studentId,
+      await supabase.from('dsa_ai_reports').insert({
+        student_id: resolvedId,
         report,
         statistics_snapshot: report.statistics_snapshot,
         overall_score: report.overall_performance.score_percent,
         ai_provider: report.ai_provider,
         ai_status: report.ai_status,
       });
+    } catch {}
 
-      if (!error) return;
+    // 2. Persist to student_dsa_progress
+    try {
+      await supabase.from('student_dsa_progress').upsert(
+        {
+          student_id: resolvedId,
+          topic_id: `coding_ai_report:${Date.now()}`,
+          status: 'solved',
+          attempts_count: 1,
+          failed_attempts: 0,
+          notes: JSON.stringify(report),
+          updated_at: now,
+        },
+        { onConflict: 'student_id,topic_id' }
+      );
     } catch (e) {
-      // fallback
+      console.warn('saveDsaReport student_dsa_progress fallback error:', e);
     }
   }
 
-  const current = memoryReports.get(studentId) || [];
+  const current = memoryReports.get(resolvedId) || [];
   current.unshift(report);
-  memoryReports.set(studentId, current);
+  memoryReports.set(resolvedId, current);
 }
 
 export async function getDsaReports(studentId: string): Promise<DsaAiAnalysisReport[]> {
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+
   if (isSupabaseConfigured && supabase) {
+    // 1. Try dsa_ai_reports
     try {
       const { data, error } = await supabase
         .from('dsa_ai_reports')
         .select('*')
-        .eq('student_id', studentId)
+        .eq('student_id', resolvedId)
         .order('generated_at', { ascending: false });
 
       if (!error && data && data.length > 0) {
-        return data.map((d: any) => ({
+        const mapped = data.map((d: any) => ({
           ...d.report,
           id: d.id,
           generated_at: d.generated_at,
         })) as DsaAiAnalysisReport[];
+        memoryReports.set(resolvedId, mapped);
+        return mapped;
       }
-    } catch (e) {
-      // fallback
-    }
+    } catch {}
+
+    // 2. Fallback to student_dsa_progress
+    try {
+      const { data, error } = await supabase
+        .from('student_dsa_progress')
+        .select('*')
+        .eq('student_id', resolvedId)
+        .like('topic_id', 'coding_ai_report:%')
+        .order('updated_at', { ascending: false });
+
+      if (!error && data && data.length > 0) {
+        const reports: DsaAiAnalysisReport[] = [];
+        for (const row of data) {
+          if (!row.notes) continue;
+          try {
+            const parsed = JSON.parse(row.notes);
+            reports.push(parsed);
+          } catch {}
+        }
+        if (reports.length > 0) {
+          memoryReports.set(resolvedId, reports);
+          return reports;
+        }
+      }
+    } catch {}
   }
 
-  return memoryReports.get(studentId) || [];
+  return memoryReports.get(resolvedId) || [];
 }
 
 /**
@@ -389,36 +635,57 @@ export async function saveWeeklyPlan(
   tasks: DsaWeeklyTask[],
   weekStart: string
 ): Promise<void> {
-  if (isSupabaseConfigured && supabase) {
-    try {
-      const completionStatus: Record<string, boolean> = {};
-      tasks.forEach((t) => {
-        completionStatus[t.id] = t.completed;
-      });
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+  const now = new Date().toISOString();
 
-      const { error } = await supabase.from('dsa_weekly_plans').insert({
-        student_id: studentId,
+  if (isSupabaseConfigured && supabase) {
+    const completionStatus: Record<string, boolean> = {};
+    tasks.forEach((t) => {
+      completionStatus[t.id] = t.completed;
+    });
+
+    // 1. Try dsa_weekly_plans
+    try {
+      await supabase.from('dsa_weekly_plans').insert({
+        student_id: resolvedId,
         week_start_date: weekStart,
         plan: tasks,
         completion_status: completionStatus,
       });
+    } catch {}
 
-      if (!error) return;
+    // 2. Persist to student_dsa_progress
+    try {
+      await supabase.from('student_dsa_progress').upsert(
+        {
+          student_id: resolvedId,
+          topic_id: 'coding_weekly_plan',
+          status: 'solved',
+          attempts_count: tasks.length,
+          failed_attempts: 0,
+          notes: JSON.stringify({ weekStart, tasks, completionStatus }),
+          updated_at: now,
+        },
+        { onConflict: 'student_id,topic_id' }
+      );
     } catch (e) {
-      // fallback
+      console.warn('saveWeeklyPlan student_dsa_progress fallback error:', e);
     }
   }
 
-  memoryPlans.set(studentId, { weekStart, tasks });
+  memoryPlans.set(resolvedId, { weekStart, tasks });
 }
 
 export async function getWeeklyPlan(studentId: string): Promise<DsaWeeklyTask[] | null> {
+  const resolvedId = (await dbResolveStudentProfileId(studentId)) || studentId;
+
   if (isSupabaseConfigured && supabase) {
+    // 1. Try dsa_weekly_plans
     try {
       const { data, error } = await supabase
         .from('dsa_weekly_plans')
         .select('*')
-        .eq('student_id', studentId)
+        .eq('student_id', resolvedId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -431,12 +698,31 @@ export async function getWeeklyPlan(studentId: string): Promise<DsaWeeklyTask[] 
           completed: completion[t.id] ?? t.completed ?? false,
         }));
       }
-    } catch (e) {
-      // fallback
-    }
+    } catch {}
+
+    // 2. Fallback to student_dsa_progress
+    try {
+      const { data, error } = await supabase
+        .from('student_dsa_progress')
+        .select('*')
+        .eq('student_id', resolvedId)
+        .eq('topic_id', 'coding_weekly_plan')
+        .maybeSingle();
+
+      if (!error && data?.notes) {
+        const parsed = JSON.parse(data.notes);
+        if (parsed.tasks && Array.isArray(parsed.tasks)) {
+          const completion = parsed.completionStatus || {};
+          return parsed.tasks.map((t: any) => ({
+            ...t,
+            completed: completion[t.id] ?? t.completed ?? false,
+          }));
+        }
+      }
+    } catch {}
   }
 
-  const mem = memoryPlans.get(studentId);
+  const mem = memoryPlans.get(resolvedId);
   return mem ? mem.tasks : null;
 }
 

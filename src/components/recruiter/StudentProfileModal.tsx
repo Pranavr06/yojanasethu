@@ -167,16 +167,27 @@ export default function StudentProfileModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby="student-profile-title"
-          className="my-auto max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white p-6 md:p-8 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-6"
+          className="relative my-auto max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-3xl bg-white p-6 md:p-8 shadow-2xl dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-6"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* 1. Header with Student Info and Recruiter Action Bar */}
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b border-slate-100 dark:border-slate-800/80 pb-5">
-            <div className="flex items-center gap-3.5">
+          {/* Extreme Top-Right Close Button */}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close student profile"
+            className="absolute top-5 right-5 md:top-6 md:right-6 z-20 rounded-xl p-2 text-slate-400 hover:text-slate-700 dark:text-slate-400 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          {/* 1. Header with Student Info (Left) and Recruiter Action Bar (Right) */}
+          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800/80 pb-5 pr-10">
+            {/* Left: Student avatar, name, USN, verification status, branch, and academic information */}
+            <div className="flex items-center gap-3.5 min-w-0">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300 shrink-0">
                 <UserRound className="h-7 w-7" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2
                     id="student-profile-title"
@@ -184,11 +195,11 @@ export default function StudentProfileModal({
                   >
                     {profile.full_name}
                   </h2>
-                  <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
+                  <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 shrink-0">
                     {profile.usn || 'USN N/A'}
                   </span>
                   {academic_record?.is_verified_by_exam_cell && (
-                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-500/20 font-medium flex items-center gap-1">
+                    <span className="text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-500/20 font-medium flex items-center gap-1 shrink-0">
                       <ShieldCheck className="w-3 h-3" /> Contineo Verified
                     </span>
                   )}
@@ -199,7 +210,8 @@ export default function StudentProfileModal({
               </div>
             </div>
 
-            <div className="flex items-center gap-2 self-end sm:self-start flex-wrap">
+            {/* Right: Compare, Notes, and Shortlisted controls */}
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
               {/* Recruiter Action: Compare Toggle */}
               {onToggleCompare && (
                 <button
@@ -263,15 +275,6 @@ export default function StudentProfileModal({
                   </button>
                 )
               )}
-
-              <button
-                type="button"
-                onClick={onClose}
-                aria-label="Close student profile"
-                className="rounded-xl p-2 text-slate-400 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors ml-1"
-              >
-                <X className="h-5 w-5" />
-              </button>
             </div>
           </div>
 

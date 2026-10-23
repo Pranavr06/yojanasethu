@@ -10,13 +10,24 @@ import {
   saveCodingStats,
 } from '@/lib/dsa/dsaStore';
 import { parseCodingProfileUrl, syncPlatformStatistics } from '@/lib/dsa/platformService';
+import { validateStudentSession } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const studentId = searchParams.get('student_id') || 'student-mock-1';
+    const clientSuppliedStudentId = searchParams.get('student_id') || undefined;
+
+    // Verify authenticated student session server-side
+    const authResult = await validateStudentSession(req, clientSuppliedStudentId);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
 
     const [profiles, stats, weeklyPlan, reports] = await Promise.all([
       getCodingProfiles(studentId),
@@ -28,6 +39,7 @@ export async function GET(req: NextRequest) {
     const aggregated = aggregateCodingStats(profiles, stats);
 
     return NextResponse.json({
+      student_id: studentId,
       profiles,
       stats,
       aggregated,
@@ -46,7 +58,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { student_id, url, platform_hint } = body;
 
-    const studentId = student_id || 'student-mock-1';
+    // Verify authenticated student session server-side
+    const authResult = await validateStudentSession(req, student_id);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
 
     if (!url || typeof url !== 'string' || !url.trim()) {
       return NextResponse.json({ error: 'Profile URL is required' }, { status: 400 });
@@ -96,14 +116,24 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const body = await req.json();
-    const { student_id, profile_id } = body;
+    const { student_id, profile_id, platform } = body;
 
-    const studentId = student_id || 'student-mock-1';
-    if (!profile_id) {
-      return NextResponse.json({ error: 'Profile ID is required' }, { status: 400 });
+    // Verify authenticated student session server-side
+    const authResult = await validateStudentSession(req, student_id);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
+
+    const targetIdentifier = profile_id || platform;
+    if (!targetIdentifier) {
+      return NextResponse.json({ error: 'Profile ID or platform is required' }, { status: 400 });
     }
 
-    await removeCodingProfile(studentId, profile_id);
+    await removeCodingProfile(studentId, targetIdentifier);
 
     return NextResponse.json({ success: true, message: 'Platform disconnected successfully' });
   } catch (error: any) {
