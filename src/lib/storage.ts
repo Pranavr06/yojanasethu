@@ -11,7 +11,7 @@ export interface UploadResult {
 }
 
 /**
- * Uploads a student resume or certificate PDF directly to Supabase Storage Bucket.
+ * Uploads a student resume or certificate directly to Supabase Storage Bucket.
  * Stored under: /resumes/ or /certificates/
  */
 export async function uploadDocumentToSupabaseStorage(params: {
@@ -31,12 +31,38 @@ export async function uploadDocumentToSupabaseStorage(params: {
   // If Supabase is connected with live credentials:
   if (isSupabaseConfigured && supabase) {
     try {
-      const { data, error } = await supabase.storage
+      let { data, error } = await supabase.storage
         .from(STORAGE_BUCKET)
         .upload(storagePath, fileBuffer, {
           contentType: contentType || 'application/pdf',
           upsert: true,
         });
+
+      // If bucket does not exist in friends' Supabase, attempt to auto-create it:
+      if (
+        error &&
+        (error.message?.toLowerCase().includes('not found') ||
+          error.message?.toLowerCase().includes('bucket'))
+      ) {
+        try {
+          const { error: createErr } = await supabase.storage.createBucket(STORAGE_BUCKET, {
+            public: true,
+            fileSizeLimit: 20 * 1024 * 1024,
+          });
+          if (!createErr) {
+            const retry = await supabase.storage
+              .from(STORAGE_BUCKET)
+              .upload(storagePath, fileBuffer, {
+                contentType: contentType || 'application/pdf',
+                upsert: true,
+              });
+            data = retry.data;
+            error = retry.error;
+          }
+        } catch (bucketCreateErr) {
+          console.warn('Auto-create bucket attempt error:', bucketCreateErr);
+        }
+      }
 
       if (!error && data) {
         const { data: publicUrlData } = supabase.storage

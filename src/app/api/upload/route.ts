@@ -9,22 +9,27 @@ export async function POST(request: NextRequest) {
     const studentIdOrUsn = (formData.get('studentId') as string) || 'NNM24IS159';
 
     if (!file) {
-      return NextResponse.json({ error: 'No file uploaded. Please select a PDF document.' }, { status: 400 });
+      return NextResponse.json({ error: 'No file uploaded. Please select a document or image.' }, { status: 400 });
     }
 
-    // Validate file type
-    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-    if (!isPdf) {
+    // Validate file type (supports PDF and standard certificate images)
+    const allowedExtensions = ['.pdf', '.png', '.jpg', '.jpeg', '.webp'];
+    const isAllowedType =
+      file.type === 'application/pdf' ||
+      file.type.startsWith('image/') ||
+      allowedExtensions.some((ext) => file.name.toLowerCase().endsWith(ext));
+
+    if (!isAllowedType) {
       return NextResponse.json(
-        { error: 'Invalid file format. Only PDF documents (.pdf) are permitted for resumes and certificates.' },
+        { error: 'Invalid file format. Only PDF documents (.pdf) and images (.png, .jpg, .jpeg) are permitted.' },
         { status: 400 }
       );
     }
 
-    // 10MB file limit
-    const MAX_SIZE = 10 * 1024 * 1024;
+    // 15MB file limit
+    const MAX_SIZE = 15 * 1024 * 1024;
     if (file.size > MAX_SIZE) {
-      return NextResponse.json({ error: 'File size exceeds maximum allowed limit of 10MB.' }, { status: 400 });
+      return NextResponse.json({ error: 'File size exceeds maximum allowed limit of 15MB.' }, { status: 400 });
     }
 
     const arrayBuffer = await file.arrayBuffer();
@@ -33,13 +38,13 @@ export async function POST(request: NextRequest) {
     const uploadResult = await uploadDocumentToS3({
       fileBuffer: buffer,
       fileName: file.name,
-      contentType: file.type || 'application/pdf',
+      contentType: file.type || (file.name.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg'),
       folder,
       studentIdOrUsn,
     });
 
     return NextResponse.json({
-      message: 'Document uploaded to S3 bucket successfully!',
+      message: 'Document uploaded to storage bucket successfully!',
       document_storage_path: uploadResult.documentStoragePath,
       file_url: uploadResult.fileUrl,
       file_name: uploadResult.fileName,
