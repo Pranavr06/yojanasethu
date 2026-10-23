@@ -177,7 +177,7 @@ export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
 
     if (!studentProfiles || studentProfiles.length === 0) return [];
 
-    // Fetch student profiles concurrently instead of sequentially.
+    // Fetch full student profiles, including academic records and evidence.
     const results = await Promise.all(
       studentProfiles.map((student) => dbGetFullStudent(student.id))
     );
@@ -190,7 +190,6 @@ export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
     throw err;
   }
 }
-
 
 /**
  * Student submits project or certificate evidence into 'evidence_submissions' table
