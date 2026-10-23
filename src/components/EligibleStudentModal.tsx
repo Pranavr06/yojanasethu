@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   Loader2,
   BookOpen,
+  FileText,
 } from 'lucide-react';
 
 interface Props {
@@ -291,8 +292,25 @@ export default function EligibleStudentModal({ isOpen, onClose, drive }: Props) 
                       </div>
                     </div>
 
-                    {/* Eligibility Decision Badge */}
-                    <div className="shrink-0 self-start sm:self-center">
+                    {/* Eligibility & Resume Actions */}
+                    <div className="shrink-0 self-start sm:self-center flex items-center gap-2 flex-wrap">
+                      {profile.resume_storage_path ? (
+                        <a
+                          href={`/api/recruiter/resume/file?path=${encodeURIComponent(profile.resume_storage_path)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
+                          title={profile.resume_file_name || 'View Candidate Resume'}
+                        >
+                          <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                          <span>View Resume</span>
+                        </a>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60">
+                          Resume not uploaded
+                        </span>
+                      )}
+
                       {isEligible ? (
                         <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30">
                           <CheckCircle2 className="w-3.5 h-3.5" />

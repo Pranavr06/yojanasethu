@@ -44,8 +44,10 @@ async function runAllTests() {
     await runCertificateAssessmentTests();
     const { runSkillGapTests } = require('./test-skill-gap.ts');
     await runSkillGapTests();
-    const { runResumeBuilderTests } = require("./test-resume-builder.ts");
+    const { runResumeBuilderTests } = require('./test-resume-builder.ts');
     await runResumeBuilderTests();
+    const { runPermanentResumeTests } = require('./test-permanent-resume.ts');
+    await runPermanentResumeTests();
   } catch (err) {
     console.error('Test execution failed:', err);
     process.exit(1);

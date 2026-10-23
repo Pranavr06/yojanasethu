@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import MyResumeCard from '@/components/student/MyResumeCard';
 import { useAuth } from '@/lib/authContext';
 import {
   LayoutDashboard,
@@ -204,6 +205,11 @@ export default function StudentDashboard() {
             Faculty Endorsed
           </p>
         </Link>
+      </section>
+
+      {/* Permanent Student Resume Storage Card */}
+      <section>
+        <MyResumeCard />
       </section>
 
       {/* Unified Modules Navigation Hub (Merged from All Sections & Existing Modules) */}

@@ -55,15 +55,19 @@ export default function CandidateCard({
     );
   });
 
-  // Resume presence check from student evidence submissions
+  // Resume presence check from permanent uploaded resume or evidence submissions
   const hasResume = useMemo(() => {
-    return student.evidence_submissions?.some((e) =>
+    if (student.profile?.resume_storage_path || (student as any).resume_storage_path) {
+      return true;
+    }
+    const submissions = (student as any).submissions || student.evidence_submissions || [];
+    return submissions.some((e: any) =>
       (e.document_storage_path && e.document_storage_path.toLowerCase().includes('resume')) ||
       (e.credential_url && e.credential_url.toLowerCase().includes('resume')) ||
       (e.title && e.title.toLowerCase().includes('resume')) ||
       e.type === ('resume' as any)
     );
-  }, [student.evidence_submissions]);
+  }, [student.profile?.resume_storage_path, (student as any).submissions, student.evidence_submissions]);
 
   // Verified, claimed and missing skills counts
   const verifiedCount = useMemo(

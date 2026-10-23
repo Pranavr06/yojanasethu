@@ -97,8 +97,25 @@ export interface Profile {
   target_career_role?: string | null;
   learning_goals?: string[] | null;
   career_interests?: string[] | null;
+  resume_storage_path?: string | null;
+  resume_file_name?: string | null;
+  resume_file_size?: string | null;
+  resume_uploaded_at?: string | null;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface StudentUploadedResume {
+  id: string;
+  student_id: string;
+  file_name: string;
+  storage_path: string;
+  file_size?: string | null;
+  content_type?: string | null;
+  uploaded_at: string;
+  updated_at: string;
+  view_url?: string | null;
+  download_url?: string | null;
 }
 
 export interface AcademicRecord {

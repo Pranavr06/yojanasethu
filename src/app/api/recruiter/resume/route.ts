@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { supabase, isSupabaseConfigured } from '@/lib/db';
+import { supabase, isSupabaseConfigured, dbGetStudentUploadedResume } from '@/lib/db';
 import { getSignedDocumentUrl } from '@/lib/storage';
 
 export const dynamic = 'force-dynamic';
@@ -17,8 +17,9 @@ function withTimeout<T>(promise: PromiseLike<T> | Promise<T>, ms: number, timeou
  * GET /api/recruiter/resume?studentId=<id>&usn=<usn>
  * Retrieves a candidate's resume securely using the existing Supabase Storage bucket 'documents'.
  * Checks:
- *  1. evidence_submissions table for resume records (by path or title)
- *  2. Supabase Storage bucket 'documents/resumes/' prefix for uploaded files
+ *  1. student_uploaded_resumes table and profiles table (permanent resume upload)
+ *  2. evidence_submissions table for resume records (by path or title)
+ *  3. Supabase Storage bucket 'documents/resumes/' prefix for uploaded files
  * Generates an authorized signed URL without exposing privileged service-role credentials.
  */
 export async function GET(request: NextRequest) {
@@ -34,12 +35,29 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // 1. First check permanent student uploaded resume
+    const uploadedResume = await dbGetStudentUploadedResume(studentId || usn || '');
+    if (uploadedResume && uploadedResume.storage_path) {
+      const { signedUrl, cleanPath } = await getSignedDocumentUrl(uploadedResume.storage_path, 3600);
+      const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(cleanPath)}`;
+
+      return NextResponse.json({
+        hasResume: true,
+        storagePath: cleanPath,
+        fileName: uploadedResume.file_name || 'Resume.pdf',
+        title: 'Candidate Permanent Resume',
+        uploadedAt: uploadedResume.uploaded_at || uploadedResume.updated_at,
+        viewUrl: signedUrl || streamingUrl,
+        streamingUrl,
+      });
+    }
+
     let foundStoragePath: string | null = null;
     let foundFileName = 'Resume.pdf';
     let submissionTitle = 'Student Official Resume';
     let uploadedAt: string | null = null;
 
-    // 1. Check evidence_submissions in database (with safety timeout)
+    // 2. Check evidence_submissions in database (with safety timeout)
     if (isSupabaseConfigured && supabase) {
       try {
         let query = supabase.from('evidence_submissions').select('*');
@@ -86,7 +104,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 2. If not found in evidence_submissions, check Supabase Storage directly under resumes/
+    // 3. If not found in evidence_submissions, check Supabase Storage directly under resumes/
     if (!foundStoragePath && isSupabaseConfigured && supabase) {
       try {
         const identifier = usn || studentId || '';
@@ -116,7 +134,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 3. If no resume was found anywhere, return a clear, honest state
+    // 4. If no resume was found anywhere, return a clear, honest state
     if (!foundStoragePath) {
       return NextResponse.json({
         hasResume: false,
@@ -126,7 +144,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // 4. Securely generate a time-limited signed URL or streaming proxy
+    // 5. Securely generate a time-limited signed URL or streaming proxy
     const { signedUrl, cleanPath } = await getSignedDocumentUrl(foundStoragePath, 3600);
     const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(cleanPath)}`;
 

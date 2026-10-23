@@ -1,3 +1,4 @@
+import { getSignedDocumentUrl } from './storage';
 import {
   Profile,
   AcademicRecord,
@@ -33,6 +34,7 @@ import {
   ResumeTemplateType,
   ResumeAnalysisResult,
   ResumeCertification,
+  StudentUploadedResume,
 } from '@/types';
 import {
   gradeAssessmentSubmission,
@@ -1200,7 +1202,7 @@ export async function dbGetMentorMentees(options?: {
   try {
     let profileQuery = supabase
       .from('profiles')
-      .select('id, full_name, email, usn, semester, graduation_year, github_username, departments(id, code, name)')
+      .select('id, full_name, email, usn, semester, graduation_year, github_username, resume_storage_path, resume_file_name, resume_uploaded_at, departments(id, code, name)')
       .eq('role', 'student')
       .order('usn', { ascending: true });
 
@@ -1253,6 +1255,10 @@ export async function dbGetMentorMentees(options?: {
         total_skills_count: sc.total,
         is_placement_ready: isPlacementReady,
         github_username: p.github_username,
+        resume_storage_path: (p as any).resume_storage_path || null,
+        resume_file_name: (p as any).resume_file_name || null,
+        resume_uploaded_at: (p as any).resume_uploaded_at || null,
+        has_resume: Boolean((p as any).resume_storage_path),
       };
     });
 
@@ -3354,4 +3360,224 @@ export function dbBuildDefaultResumeFromProfile(student: FullStudentProfile): Re
       'Finalist in National Level Hackathon (Nexathon 2026) for institutional ERP innovation',
     ],
   };
+}
+// ============================================================================
+// PERMANENT STUDENT UPLOADED RESUME STORAGE & MULTI-DASHBOARD ACCESS
+// ============================================================================
+
+const memoryUploadedResumes = new Map<string, StudentUploadedResume>();
+
+/**
+ * Fetch permanent uploaded resume for a student.
+ * Checks student_uploaded_resumes table, profiles table, and in-memory cache.
+ */
+export async function dbGetStudentUploadedResume(studentIdOrIdentifier: string): Promise<StudentUploadedResume | null> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  // 1. Try Supabase student_uploaded_resumes table
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_uploaded_resumes')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data) {
+        const { signedUrl } = await getSignedDocumentUrl(data.storage_path, 3600);
+        const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(data.storage_path)}`;
+        return {
+          ...data,
+          view_url: signedUrl || streamingUrl,
+          download_url: streamingUrl,
+        } as StudentUploadedResume;
+      }
+    } catch (err) {
+      console.warn('dbGetStudentUploadedResume table query exception:', err);
+    }
+
+    // 2. Fallback to profiles table resume columns
+    try {
+      const { data: profile, error: pErr } = await supabase
+        .from('profiles')
+        .select('id, resume_storage_path, resume_file_name, resume_file_size, resume_uploaded_at, updated_at')
+        .eq('id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!pErr && profile && profile.resume_storage_path) {
+        const { signedUrl } = await getSignedDocumentUrl(profile.resume_storage_path, 3600);
+        const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(profile.resume_storage_path)}`;
+        return {
+          id: `resume-${profile.id}`,
+          student_id: profile.id,
+          file_name: profile.resume_file_name || 'Resume.pdf',
+          storage_path: profile.resume_storage_path,
+          file_size: profile.resume_file_size || null,
+          content_type: 'application/pdf',
+          uploaded_at: profile.resume_uploaded_at || profile.updated_at || new Date().toISOString(),
+          updated_at: profile.resume_uploaded_at || profile.updated_at || new Date().toISOString(),
+          view_url: signedUrl || streamingUrl,
+          download_url: streamingUrl,
+        };
+      }
+    } catch (profileErr) {
+      console.warn('dbGetStudentUploadedResume profile query exception:', profileErr);
+    }
+  }
+
+  // 3. Check in-memory store
+  const cached = memoryUploadedResumes.get(resolvedStudentId);
+  if (cached) {
+    const { signedUrl } = await getSignedDocumentUrl(cached.storage_path, 3600);
+    const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(cached.storage_path)}`;
+    return {
+      ...cached,
+      view_url: signedUrl || streamingUrl,
+      download_url: streamingUrl,
+    };
+  }
+
+  // 4. Check ALL_COHORT_PROFILES in-memory cohort
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile && cohortProfile.resume_storage_path) {
+    const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(cohortProfile.resume_storage_path)}`;
+    return {
+      id: `resume-${cohortProfile.id}`,
+      student_id: cohortProfile.id,
+      file_name: cohortProfile.resume_file_name || 'Resume.pdf',
+      storage_path: cohortProfile.resume_storage_path,
+      file_size: cohortProfile.resume_file_size || null,
+      content_type: 'application/pdf',
+      uploaded_at: cohortProfile.resume_uploaded_at || new Date().toISOString(),
+      updated_at: cohortProfile.resume_uploaded_at || new Date().toISOString(),
+      view_url: streamingUrl,
+      download_url: streamingUrl,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Permanently save or update an uploaded student resume.
+ * Persists in student_uploaded_resumes table, profiles table, and local memory cache.
+ */
+export async function dbSaveStudentUploadedResume(
+  studentIdOrIdentifier: string,
+  params: {
+    storage_path: string;
+    file_name: string;
+    file_size?: string;
+    content_type?: string;
+  }
+): Promise<StudentUploadedResume> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const resumeRecord: StudentUploadedResume = {
+    id: `resume-${resolvedStudentId}`,
+    student_id: resolvedStudentId,
+    file_name: params.file_name,
+    storage_path: params.storage_path,
+    file_size: params.file_size || null,
+    content_type: params.content_type || 'application/pdf',
+    uploaded_at: now,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // Upsert into student_uploaded_resumes
+      await supabase
+        .from('student_uploaded_resumes')
+        .upsert(
+          {
+            student_id: resolvedStudentId,
+            file_name: params.file_name,
+            storage_path: params.storage_path,
+            file_size: params.file_size || null,
+            content_type: params.content_type || 'application/pdf',
+            updated_at: now,
+          },
+          { onConflict: 'student_id' }
+        );
+
+      // Update profiles table
+      await supabase
+        .from('profiles')
+        .update({
+          resume_storage_path: params.storage_path,
+          resume_file_name: params.file_name,
+          resume_file_size: params.file_size || null,
+          resume_uploaded_at: now,
+        })
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbSaveStudentUploadedResume database exception:', err);
+    }
+  }
+
+  // Update in-memory cache and cohort profile
+  memoryUploadedResumes.set(resolvedStudentId, resumeRecord);
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile) {
+    cohortProfile.resume_storage_path = params.storage_path;
+    cohortProfile.resume_file_name = params.file_name;
+    cohortProfile.resume_file_size = params.file_size || null;
+    cohortProfile.resume_uploaded_at = now;
+  }
+
+  const { signedUrl } = await getSignedDocumentUrl(params.storage_path, 3600);
+  const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(params.storage_path)}`;
+  return {
+    ...resumeRecord,
+    view_url: signedUrl || streamingUrl,
+    download_url: streamingUrl,
+  };
+}
+
+/**
+ * Permanently delete an uploaded student resume.
+ * Removes from student_uploaded_resumes table, clears profiles table columns, and memory cache.
+ */
+export async function dbDeleteStudentUploadedResume(studentIdOrIdentifier: string): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from('student_uploaded_resumes')
+        .delete()
+        .eq('student_id', resolvedStudentId);
+
+      await supabase
+        .from('profiles')
+        .update({
+          resume_storage_path: null,
+          resume_file_name: null,
+          resume_file_size: null,
+          resume_uploaded_at: null,
+        })
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbDeleteStudentUploadedResume database exception:', err);
+    }
+  }
+
+  memoryUploadedResumes.delete(resolvedStudentId);
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile) {
+    cohortProfile.resume_storage_path = null;
+    cohortProfile.resume_file_name = null;
+    cohortProfile.resume_file_size = null;
+    cohortProfile.resume_uploaded_at = null;
+  }
+
+  return true;
 }
