@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
+import NotificationBell from '@/components/NotificationBell';
 import { useAuth } from '@/lib/authContext';
 import { useTheme } from '@/lib/themeContext';
 import {
@@ -38,7 +39,7 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
     pathname === '/forgot-password' ||
     pathname === '/reset-password' ||
     pathname.startsWith('/auth/');
-  const isStudentDashboard = pathname === '/student' || pathname.startsWith('/student');
+  const isStudentDashboard = pathname === '/student' || pathname === '/student/dashboard';
 
   if (isAuthPage || isStudentDashboard) {
     return (
@@ -111,7 +112,11 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+{/* Right Controls: Notification Bell, Theme Switcher & User Profile Menu */}
+          <div className="flex items-center gap-2.5">
+            <NotificationBell />
+
+            {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
               className="rounded-xl border border-slate-200 p-2 dark:border-slate-800"

@@ -270,3 +270,137 @@ export interface CohortSkillMetric {
   total_students: number;
   gap_percentage: number;
 }
+
+// --- PLACEMENT TRANSPARENCY HUB TYPES ---
+
+export type AnnouncementStatus = 'draft' | 'published' | 'closed' | 'archived';
+export type JobType = 'Full-time' | 'Internship' | 'Internship + Full-time' | 'Contract';
+
+export interface CtcBreakdown {
+  fixed_lpa?: number;
+  variable_lpa?: number;
+  joining_bonus_lpa?: number;
+  stipend_per_month?: number;
+  currency?: string;
+  notes?: string;
+}
+
+export interface PlacementAnnouncement {
+  id: string;
+  institution_id: string;
+  drive_id?: string | null;
+  company_name: string;
+  company_logo_url?: string | null;
+  role_title: string;
+  job_description: string;
+  job_type: JobType;
+  employment_details?: string | null;
+  ctc_lpa: number;
+  ctc_breakdown?: CtcBreakdown | null;
+  eligible_branches: string[];
+  eligible_batches: number[];
+  min_cgpa: number;
+  max_active_backlogs: number;
+  allow_history_of_backlogs: boolean;
+  required_skills: {
+    name: string;
+    importance: 'mandatory' | 'preferred';
+    weight?: number;
+  }[];
+  registration_open_date?: string | null;
+  registration_deadline: string;
+  ppt_date?: string | null;
+  assessment_date?: string | null;
+  interview_date?: string | null;
+  application_link?: string | null;
+  official_source_ref?: string | null;
+  status: AnnouncementStatus;
+  created_by?: string | null;
+  author_name: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type EligibilityDecision =
+  | 'eligible'
+  | 'ineligible'
+  | 'registration_not_open'
+  | 'registration_closed'
+  | 'unknown';
+
+export interface AdvisoryEligibility {
+  decision: EligibilityDecision;
+  badgeLabel: string;
+  badgeColor: 'emerald' | 'rose' | 'amber' | 'slate' | 'blue';
+  isEligible: boolean;
+  canApplyNow: boolean;
+  reasons: string[];
+  missingDataWarnings: string[];
+  studentSnapshot: {
+    cgpa?: number;
+    backlogs?: number;
+    branch?: string;
+    batch?: number;
+  };
+}
+
+export type PlacementEventType =
+  | 'registration_deadline'
+  | 'registration_open'
+  | 'ppt'
+  | 'assessment'
+  | 'interview'
+  | 'company_visit';
+
+export interface PlacementCalendarEvent {
+  id: string;
+  announcement_id: string;
+  title: string;
+  company_name: string;
+  role_title: string;
+  event_type: PlacementEventType;
+  date: string;
+  location_or_link?: string | null;
+  description?: string | null;
+  status: AnnouncementStatus;
+}
+
+export interface InAppNotification {
+  id: string;
+  user_id?: string;
+  role_target?: string;
+  title: string;
+  message: string;
+  type: 'announcement' | 'deadline' | 'drive' | 'system';
+  link?: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface HistoricalRecruiterRecord {
+  company_name: string;
+  tier: string;
+  roles_offered: string[];
+  years_active: number[];
+  total_placed: number;
+  highest_package_lpa: number;
+  average_package_lpa: number;
+}
+
+export interface HistoricalPlacementStats {
+  reporting_period: string;
+  total_students_placed: number;
+  highest_package_lpa: number;
+  average_package_lpa: number;
+  median_package_lpa: number;
+  recruiters_count: number;
+  department_summary: {
+    department_code: string;
+    department_name: string;
+    total_students: number;
+    placed_students: number;
+    placement_rate: number;
+    average_package_lpa: number;
+  }[];
+  top_recruiters: HistoricalRecruiterRecord[];
+}

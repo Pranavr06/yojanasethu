@@ -6,8 +6,11 @@ import {
   LayoutDashboard, FileText, BrainCircuit, Code2, Award,
   BriefcaseBusiness, GraduationCap, Menu, X, Upload,
   Trash2, Search, Target, BookOpen, Sparkles, CheckCircle2,
-  ArrowRight, Download,
+  ArrowRight, Download, Briefcase, ShieldCheck, Calculator,
+  Calendar, ExternalLink,
 } from "lucide-react";
+import Link from "next/link";
+import { useAuth } from "@/lib/authContext";
 
 const skills = [
   { name: "Python", level: 80 },
@@ -44,6 +47,7 @@ const nav = [
 ];
 
 export default function StudentDashboard() {
+  const { user } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const [active, setActive] = useState("overview");
   const [search, setSearch] = useState("");
@@ -341,7 +345,7 @@ export default function StudentDashboard() {
             </div>
           </section>
 
-          <section id="coach" className="scroll-mt-24">
+<section id="coach" className="scroll-mt-24">
             <div className={cardClass}>
               <BrainCircuit size={28} className="text-indigo-600" />
               <h2 className="mt-3 text-2xl font-extrabold">AI Career Coach</h2>
@@ -499,7 +503,7 @@ export default function StudentDashboard() {
           <footer className="border-t py-5 text-xs text-slate-400">
             YojanaSethu Student Portal · Frontend prototype
           </footer>
-        </div>
+</div>
       </main>
     </div>
   );
