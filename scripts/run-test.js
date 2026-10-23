@@ -36,5 +36,16 @@ require.extensions['.ts'] = function (module, filename) {
   module._compile(result.outputText, filename);
 };
 
-// Run the test file
-require('./test-placement-transparency.ts');
+// Run the test files
+async function runAllTests() {
+  try {
+    require('./test-placement-transparency.ts');
+    const { runCertificateAssessmentTests } = require('./test-certificate-assessment.ts');
+    await runCertificateAssessmentTests();
+  } catch (err) {
+    console.error('Test execution failed:', err);
+    process.exit(1);
+  }
+}
+
+runAllTests();

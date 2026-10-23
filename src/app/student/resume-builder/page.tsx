@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/authContext';
+import { VerifiedCredentialSummary } from '@/types';
 import {
   FileText,
   Sparkles,
@@ -19,6 +20,9 @@ import {
   Award,
   Layers,
   ArrowRight,
+  CheckSquare,
+  Square,
+  AlertCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -59,6 +63,11 @@ export default function ResumeBuilderPage() {
   const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
   const [template, setTemplate] = useState<'modern' | 'minimal' | 'academic'>('modern');
   const [atsScore, setAtsScore] = useState(88);
+
+  // Verified credentials loaded from database
+  const [verifiedCreds, setVerifiedCreds] = useState<VerifiedCredentialSummary[]>([]);
+  const [selectedCredIds, setSelectedCredIds] = useState<Set<string>>(new Set());
+  const [loadingCreds, setLoadingCreds] = useState(false);
 
   const [resume, setResume] = useState<ResumeData>({
     name: user?.full_name || 'Pranav R',
@@ -104,8 +113,27 @@ export default function ResumeBuilderPage() {
       },
     ],
     certifications:
-      'AWS Certified Solutions Architect Associate, Google Cloud Digital Leader, HackerRank 5-Star Problem Solving',
+      'Google Cloud Digital Leader, HackerRank 5-Star Problem Solving',
   });
+
+  // Fetch verified credentials from server API
+  const fetchVerifiedCredentials = async (studentId?: string) => {
+    setLoadingCreds(true);
+    try {
+      const id = studentId || user?.id || '11111111-1111-1111-1111-111111111111';
+      const res = await fetch(`/api/students/credentials?student_id=${encodeURIComponent(id)}`);
+      const data = await res.json();
+      if (data?.credentials && Array.isArray(data.credentials)) {
+        setVerifiedCreds(data.credentials);
+        // Default to selecting all verified credentials
+        setSelectedCredIds(new Set(data.credentials.map((c: VerifiedCredentialSummary) => c.submission_id || c.id)));
+      }
+    } catch (e) {
+      console.error('Failed to fetch verified credentials:', e);
+    } finally {
+      setLoadingCreds(false);
+    }
+  };
 
   // Auto-fill from student ERP database
   const autoFillFromProfile = async () => {
@@ -123,17 +151,23 @@ export default function ResumeBuilderPage() {
         const s = data.student;
         setResume((prev) => ({
           ...prev,
-          name: s.name || prev.name,
-          email: s.email || prev.email,
-          phone: s.phone || prev.phone,
+          name: s.profile?.full_name || s.name || prev.name,
+          email: s.profile?.email || s.email || prev.email,
+          phone: s.profile?.phone || s.phone || prev.phone,
           education: {
             ...prev.education,
             institution: s.college || prev.education.institution,
             cgpa: s.current_cgpa ? `${s.current_cgpa} / 10.0` : prev.education.cgpa,
             field: s.branch || prev.education.field,
           },
-          skills: s.skills && s.skills.length > 0 ? s.skills.join(', ') : prev.skills,
+          skills: s.skills && s.skills.length > 0
+            ? s.skills.map((sk: any) => typeof sk === 'string' ? sk : sk.skill_name).join(', ')
+            : prev.skills,
         }));
+
+        if (s.profile?.id) {
+          fetchVerifiedCredentials(s.profile.id);
+        }
       }
     } catch (e) {
       console.error('Failed to auto-populate from profile:', e);
@@ -142,9 +176,27 @@ export default function ResumeBuilderPage() {
     }
   };
 
+  useEffect(() => {
+    fetchVerifiedCredentials();
+  }, [user]);
+
+  const toggleCredentialSelection = (id: string) => {
+    setSelectedCredIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const handlePrint = () => {
     window.print();
   };
+
+  const selectedVerifiedList = verifiedCreds.filter((c) => selectedCredIds.has(c.submission_id || c.id));
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
@@ -163,7 +215,7 @@ export default function ResumeBuilderPage() {
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Craft an ATS-optimized, high-impact technical resume backed by your verified Contineo records.
+            Craft an ATS-optimized, high-impact technical resume backed by your verified Contineo records and faculty endorsements.
           </p>
         </div>
 
@@ -191,7 +243,7 @@ export default function ResumeBuilderPage() {
 
       {/* Main Grid: Form Editor vs Live Preview */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-        {/* Left Column: Form Sections (7 cols) */}
+        {/* Left Column: Form Sections (6 cols) */}
         <div className="xl:col-span-6 space-y-5 print:hidden">
           {/* Personal Info Card */}
           <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
@@ -386,18 +438,118 @@ export default function ResumeBuilderPage() {
             ))}
           </div>
 
-          {/* Certifications & Badges */}
-          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2">
-              <Award className="w-4 h-4 text-indigo-500" />
-              4. Certifications & Badges
-            </h2>
-            <textarea
-              rows={2}
-              value={resume.certifications}
-              onChange={(e) => setResume({ ...resume, certifications: e.target.value })}
-              className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-2.5 text-xs outline-none focus:border-indigo-500 text-slate-900 dark:text-white"
-            />
+          {/* Section 4: Verified Credentials Selector & Self-Declared Claims */}
+          <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-2">
+                <Award className="w-4 h-4 text-indigo-500" />
+                4. Verified Credentials & Certifications
+              </h2>
+              <button
+                type="button"
+                onClick={() => fetchVerifiedCredentials()}
+                disabled={loadingCreds}
+                className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
+              >
+                <RefreshCw className={`w-3 h-3 ${loadingCreds ? 'animate-spin' : ''}`} />
+                <span>Sync</span>
+              </button>
+            </div>
+
+            {/* Verified Credentials Selector List */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  <span>Faculty-Verified Credentials ({verifiedCreds.length})</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-normal">
+                  Checked items appear with verified badge
+                </span>
+              </div>
+
+              {verifiedCreds.length === 0 ? (
+                <div className="p-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-1">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                    No faculty-verified credentials found on your record.
+                  </p>
+                  <Link
+                    href="/student/certificates"
+                    className="text-xs text-indigo-600 dark:text-indigo-400 font-bold hover:underline inline-flex items-center gap-1"
+                  >
+                    <span>Upload certificate & take assessment</span>
+                    <ArrowRight className="w-3 h-3" />
+                  </Link>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {verifiedCreds.map((cred) => {
+                    const cId = cred.submission_id || cred.id;
+                    const isSelected = selectedCredIds.has(cId);
+                    return (
+                      <div
+                        key={cId}
+                        onClick={() => toggleCredentialSelection(cId)}
+                        className={`p-3 rounded-xl border cursor-pointer transition-all flex items-start gap-3 ${
+                          isSelected
+                            ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-300 dark:border-emerald-800'
+                            : 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 opacity-60'
+                        }`}
+                      >
+                        <div className="mt-0.5 text-emerald-600 dark:text-emerald-400 shrink-0">
+                          {isSelected ? <CheckSquare className="w-4 h-4" /> : <Square className="w-4 h-4" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                              {cred.title}
+                            </span>
+                            <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              <span>Verified</span>
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-2 mt-0.5">
+                            <span>{cred.issuer}</span>
+                            {cred.assessment_score !== null && (
+                              <>
+                                <span>•</span>
+                                <span className="font-semibold text-indigo-600 dark:text-indigo-400">
+                                  Score: {Math.round(cred.assessment_score)}%
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Self-Declared Certifications (Unverified) */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                  <span>Additional Certifications (Self-Declared)</span>
+                </label>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3" />
+                  <span>Labeled as Unverified</span>
+                </span>
+              </div>
+              <textarea
+                rows={2}
+                value={resume.certifications}
+                placeholder="Google Cloud Digital Leader, HackerRank 5-Star..."
+                onChange={(e) => setResume({ ...resume, certifications: e.target.value })}
+                className="w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-2.5 text-xs outline-none focus:border-indigo-500 text-slate-900 dark:text-white"
+              />
+              <p className="text-[10px] text-slate-400 leading-normal">
+                Note: Recruiters prioritize faculty-verified credentials. Self-declared items are clearly identified as unverified to preserve institutional trust.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -538,15 +690,66 @@ export default function ResumeBuilderPage() {
                 </div>
               )}
 
-              {/* Certifications */}
-              {resume.certifications && (
+              {/* Certifications & Badges (Distinguishing Verified from Unverified) */}
+              {(selectedVerifiedList.length > 0 || resume.certifications) && (
                 <div>
-                  <h2 className="text-xs font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 print:text-indigo-800 border-b border-slate-200 dark:border-slate-800 pb-0.5 mb-1.5">
-                    Certifications & Licenses
+                  <h2 className="text-xs font-extrabold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 print:text-indigo-800 border-b border-slate-200 dark:border-slate-800 pb-0.5 mb-2">
+                    Certifications & Faculty Endorsements
                   </h2>
-                  <p className="text-xs text-slate-700 dark:text-slate-300 print:text-slate-800">
-                    {resume.certifications}
-                  </p>
+
+                  <div className="space-y-2">
+                    {/* Faculty-Verified Section */}
+                    {selectedVerifiedList.map((cred) => {
+                      const cId = cred.submission_id || cred.id;
+                      return (
+                        <div key={cId} className="text-xs flex items-start justify-between gap-2">
+                          <div>
+                            <div className="font-bold text-slate-900 dark:text-white print:text-black flex items-center gap-1.5 flex-wrap">
+                              <span>{cred.title}</span>
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 print:border-emerald-600">
+                                <CheckCircle2 className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>Faculty Verified</span>
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-600 dark:text-slate-400 print:text-slate-700 flex items-center gap-2 mt-0.5">
+                              <span>Issued by {cred.issuer}</span>
+                              {cred.assessment_score !== null && (
+                                <>
+                                  <span>•</span>
+                                  <span className="font-semibold text-indigo-600 dark:text-indigo-800 print:text-indigo-900">
+                                    Proctored Exam: {Math.round(cred.assessment_score)}%
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono shrink-0 hidden sm:block print:hidden">
+                            ID: {cId.substring(0, 8)}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {/* Unverified / Self-Reported Items */}
+                    {resume.certifications && (
+                      <div className="pt-1 text-xs">
+                        <div className="text-[11px] text-slate-700 dark:text-slate-300 print:text-slate-800">
+                          {resume.certifications.split(',').map((c, i) => {
+                            const trimmed = c.trim();
+                            if (!trimmed) return null;
+                            return (
+                              <div key={i} className="flex items-center gap-1.5 py-0.5">
+                                <span>• {trimmed}</span>
+                                <span className="text-[9px] text-slate-400 print:text-slate-500 italic">
+                                  (Self-Reported)
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
