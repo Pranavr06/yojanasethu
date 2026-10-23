@@ -102,8 +102,8 @@ const DIFFICULTY_COLORS = {
 };
 
 export default function DSATrackerPage() {
-  const { user } = useAuth();
-  const studentId = user?.id || 'student-mock-1';
+  const { user, loading: authLoading } = useAuth();
+  const studentId = user?.id || '';
 
   // Navigation Tabs
   const [activeTab, setActiveTab] = useState<'analytics' | 'patterns'>('analytics');
@@ -163,6 +163,12 @@ export default function DSATrackerPage() {
 
   // Fetch all DSA Data (profiles, stats, reports + server-synced pattern metrics)
   const fetchData = useCallback(async () => {
+    if (authLoading) return;
+    if (!studentId) {
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
@@ -216,11 +222,13 @@ export default function DSATrackerPage() {
     } finally {
       setLoading(false);
     }
-  }, [studentId]);
+  }, [studentId, authLoading]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!authLoading) {
+      fetchData();
+    }
+  }, [fetchData, authLoading]);
 
   // Load starter/fallback pattern solved IDs from localStorage if not already loaded from server
   useEffect(() => {
@@ -409,7 +417,11 @@ export default function DSATrackerPage() {
       const res = await fetch('/api/student/dsa/profiles', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ student_id: studentId, profile_id: profileId }),
+        body: JSON.stringify({
+          student_id: studentId,
+          profile_id: profileId,
+          platform: platformName.toLowerCase(),
+        }),
       });
       if (res.ok) {
         await fetchData();
@@ -709,7 +721,14 @@ export default function DSATrackerPage() {
               </span>
             </div>
 
-            {profiles.length === 0 ? (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                <RefreshCw className="w-6 h-6 animate-spin text-indigo-500 mb-2" />
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  Loading your connected coding profiles from Supabase...
+                </p>
+              </div>
+            ) : profiles.length === 0 ? (
               <div className="text-center py-8 px-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/30">
                 <Code2 className="w-8 h-8 text-slate-400 mx-auto mb-2" />
                 <h3 className="text-sm font-bold text-slate-800 dark:text-slate-200">

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { syncPlatformStatistics } from '@/lib/dsa/platformService';
 import { saveCodingStats } from '@/lib/dsa/dsaStore';
 import { CodingPlatform } from '@/types/dsa';
+import { validateStudentSession } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,7 +11,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { student_id, platform, username, profile_url } = body;
 
-    const studentId = student_id || 'student-mock-1';
+    // Verify authenticated student session server-side
+    const authResult = await validateStudentSession(req, student_id);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
 
     if (!platform || !username || !profile_url) {
       return NextResponse.json(

@@ -332,13 +332,14 @@ export function computeDsaPatternMetrics(
   dsaRecords: StudentDsaProgress[],
   totalPatternsCatalogCount: number = 20
 ): DsaPatternMetrics {
-  const solvedRecords = dsaRecords.filter((r) => r.status === 'solved');
+  const patternRecords = dsaRecords.filter((r) => !r.topic_id.startsWith('coding_'));
+  const solvedRecords = patternRecords.filter((r) => r.status === 'solved');
   const solvedCount = solvedRecords.length;
 
   let totalAttempts = 0;
   let failedAttempts = 0;
 
-  for (const r of dsaRecords) {
+  for (const r of patternRecords) {
     totalAttempts += Math.max(1, r.attempts_count || 1);
     failedAttempts += Math.max(0, r.failed_attempts || 0);
   }
