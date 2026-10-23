@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/authContext';
+import { ROLE_DASHBOARDS, normalizeRole } from '@/lib/rbac';
 import Link from 'next/link';
 import {
   Compass,
@@ -21,9 +22,9 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!loading && user) {
-      if (user.role === 'student') router.push('/student');
-      else if (user.role === 'faculty') router.push('/college');
-      else if (user.role === 'recruiter') router.push('/recruiter');
+      const role = normalizeRole(user.role);
+      const target = role ? ROLE_DASHBOARDS[role] : '/student';
+      router.push(target);
     }
   }, [user, loading, router]);
 
