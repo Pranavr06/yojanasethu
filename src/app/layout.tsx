@@ -5,9 +5,9 @@ import { ThemeProvider } from '@/lib/themeContext';
 import { AuthProvider } from '@/lib/authContext';
 
 export const metadata: Metadata = {
-  title: 'PathPilot — Proof-Based Student Career & Placement Platform',
+  title: 'YojanaSethu — Proof-Based Student Career & Placement Platform',
   description:
-    'Resumes show what students claim. PathPilot shows what they can prove, and tells them how to close the gap. Built for Nexathon 2026 by Team Neural Forge.',
+    'Resumes show what students claim. YojanaSethu shows what they can prove, and tells them how to close the gap. Built for Nexathon 2026 by Team Neural Forge.',
 };
 
 export default function RootLayout({

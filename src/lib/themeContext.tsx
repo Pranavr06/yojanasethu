@@ -19,7 +19,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem('pathpilot_theme') as Theme | null;
+    const saved = (localStorage.getItem('yojanasethu_theme') || localStorage.getItem('pathpilot_theme')) as Theme | null;
     const initialTheme = saved || 'dark';
     setTheme(initialTheme);
     if (initialTheme === 'dark') {
@@ -33,7 +33,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const toggleTheme = () => {
     const next = theme === 'dark' ? 'light' : 'dark';
     setTheme(next);
-    localStorage.setItem('pathpilot_theme', next);
+    localStorage.setItem('yojanasethu_theme', next);
     if (next === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
