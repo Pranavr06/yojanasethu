@@ -125,13 +125,17 @@ export default function Sidebar({
                   role === 'student'
                     ? '/student'
                     : role === 'faculty'
-                    ? '/college'
+                    ? '/mentor'
                     : role === 'placement'
                     ? '/placement'
                     : '/recruiter'
                 }
                 onClick={onClose}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold transition-all bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm"
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                  pathname === '/student' || pathname === '/mentor' || pathname === '/college' || pathname === '/placement' || pathname === '/recruiter'
+                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                    : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                }`}
               >
                 <LayoutDashboard className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                 <span>Dashboard</span>
@@ -146,41 +150,57 @@ export default function Sidebar({
                 ACADEMICS & PROOF
               </span>
               <div className="space-y-1">
-                <a
-                  href="#academic-truth"
+                <Link
+                  href="/student/academic-truth"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.startsWith('/student/academic-truth')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
                   <GraduationCap className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Contineo Academic Truth</span>
-                </a>
+                </Link>
 
-                <a
-                  href="#cgpa-calculator"
+                <Link
+                  href="/student/cgpa-calculator"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.startsWith('/student/cgpa-calculator')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
                   <Calculator className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>CGPA Simulation Planner</span>
-                </a>
+                </Link>
 
-                <a
-                  href="#skill-passport"
+                <Link
+                  href="/student/skill-passport"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.startsWith('/student/skill-passport')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
                   <ShieldCheck className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Verifiable Skill Passport</span>
-                </a>
+                </Link>
 
-                <a
-                  href="#career-roadmap"
+                <Link
+                  href="/student/roadmap"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.startsWith('/student/roadmap')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
                   <Calendar className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>30-Day Targeted Roadmap</span>
-                </a>
+                </Link>
               </div>
             </div>
           )}
@@ -191,41 +211,57 @@ export default function Sidebar({
                 MENTOR DESK
               </span>
               <div className="space-y-1">
-                <a
-                  href="#verification-desk"
+                <Link
+                  href="/mentor/verifications"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.includes('/verifications')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
                   <ShieldCheck className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Evidence Verification Desk</span>
-                </a>
+                </Link>
 
-                <a
-                  href="#correction-desk"
+                <Link
+                  href="/mentor/corrections"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.includes('/corrections')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
                   <FileCheck2 className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>ERP Correction Desk</span>
-                </a>
+                </Link>
 
-                <a
-                  href="#mentee-roster"
+                <Link
+                  href="/mentor/mentees"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.includes('/mentees')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
                   <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Mentee Student Directory</span>
-                </a>
+                </Link>
 
-                <a
-                  href="#cohort-analytics"
+                <Link
+                  href="/mentor/analytics"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.includes('/analytics')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
                   <BarChart3 className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Cohort Skill Gap Analytics</span>
-                </a>
+                </Link>
               </div>
             </div>
           )}

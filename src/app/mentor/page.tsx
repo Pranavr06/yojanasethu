@@ -1,12 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import MentorApprovalDesk from '@/components/MentorApprovalDesk';
-import MentorCorrectionDesk from '@/components/MentorCorrectionDesk';
-import MentorMenteeDirectory from '@/components/MentorMenteeDirectory';
-import CohortCharts from '@/components/CohortCharts';
-import { CohortSkillMetric, EvidenceSubmission, AcademicCorrectionRequest } from '@/types';
+import Link from 'next/link';
 import { useAuth } from '@/lib/authContext';
+import { EvidenceSubmission, AcademicCorrectionRequest } from '@/types';
 import {
   Building2,
   RefreshCw,
@@ -14,9 +11,13 @@ import {
   FileCheck2,
   Users,
   BarChart3,
-  GraduationCap,
-  Sparkles,
-  AlertCircle,
+  ArrowRight,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  Github,
+  ExternalLink,
+  ChevronRight,
   Filter,
 } from 'lucide-react';
 
@@ -24,12 +25,9 @@ export default function MentorDashboardPage() {
   const { user } = useAuth();
   const [selectedDept, setSelectedDept] = useState<string>('ALL');
   const [departments, setDepartments] = useState<{ code: string; name: string }[]>([]);
-  const [activeTab, setActiveTab] = useState<'approvals' | 'corrections' | 'mentees' | 'analytics'>('approvals');
 
   // Live Data States
   const [cohortSummary, setCohortSummary] = useState<any>(null);
-  const [metrics, setMetrics] = useState<CohortSkillMetric[]>([]);
-  const [interventions, setInterventions] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<EvidenceSubmission[]>([]);
   const [corrections, setCorrections] = useState<AcademicCorrectionRequest[]>([]);
   const [mentees, setMentees] = useState<any[]>([]);
@@ -38,42 +36,27 @@ export default function MentorDashboardPage() {
   const fetchMentorData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch departments
-      const deptsRes = await fetch('/api/mentor/departments');
-      const deptsData = await deptsRes.json();
-      if (deptsData.departments) {
-        setDepartments(deptsData.departments);
-      }
+      const [deptRes, analyticsRes, subRes, corrRes, menteeRes] = await Promise.all([
+        fetch('/api/mentor/departments'),
+        fetch('/api/college/cohort-analytics'),
+        fetch(`/api/mentor/submissions?status=all&dept=${selectedDept}`),
+        fetch('/api/mentor/corrections'),
+        fetch(`/api/mentor/mentees?dept=${selectedDept}`),
+      ]);
 
-      // 2. Fetch cohort summary & skill gap analytics
-      const analyticsRes = await fetch('/api/college/cohort-analytics');
-      const analyticsData = await analyticsRes.json();
-      if (analyticsData.cohort_summary) {
-        setCohortSummary(analyticsData.cohort_summary);
-        setMetrics(analyticsData.skill_gap_analytics || []);
-        setInterventions(analyticsData.recommended_interventions || []);
-      }
+      const [deptData, analyticsData, subData, corrData, menteeData] = await Promise.all([
+        deptRes.json(),
+        analyticsRes.json(),
+        subRes.json(),
+        corrRes.json(),
+        menteeRes.json(),
+      ]);
 
-      // 3. Fetch submissions (all for mentor review)
-      const subRes = await fetch(`/api/mentor/submissions?status=all&dept=${selectedDept}`);
-      const subData = await subRes.json();
-      if (subData.submissions) {
-        setSubmissions(subData.submissions);
-      }
-
-      // 4. Fetch academic correction requests
-      const corrRes = await fetch('/api/mentor/corrections');
-      const corrData = await corrRes.json();
-      if (corrData.requests) {
-        setCorrections(corrData.requests);
-      }
-
-      // 5. Fetch mentees
-      const menteesRes = await fetch(`/api/mentor/mentees?dept=${selectedDept}`);
-      const menteesData = await menteesRes.json();
-      if (menteesData.mentees) {
-        setMentees(menteesData.mentees);
-      }
+      if (deptData.departments) setDepartments(deptData.departments);
+      if (analyticsData.cohort_summary) setCohortSummary(analyticsData.cohort_summary);
+      if (subData.submissions) setSubmissions(subData.submissions);
+      if (corrData.requests) setCorrections(corrData.requests);
+      if (menteeData.mentees) setMentees(menteeData.mentees);
     } catch (e) {
       console.error('Failed to fetch mentor dashboard data:', e);
     } finally {
@@ -87,6 +70,7 @@ export default function MentorDashboardPage() {
 
   const pendingApprovalsCount = submissions.filter((s) => s.status === 'pending').length;
   const pendingCorrectionsCount = corrections.filter((c) => c.status === 'pending').length;
+  const placementReadyCount = mentees.filter((m) => m.is_placement_ready).length;
 
   return (
     <div className="space-y-6">
@@ -107,7 +91,7 @@ export default function MentorDashboardPage() {
 
             <p className="text-xs md:text-sm text-slate-300 max-w-2xl leading-relaxed">
               Welcome, <strong className="text-white">{user?.full_name || 'Dr. K. Sharma'}</strong>.
-              Review student codebase proofs, synchronize grade correction claims with Autonomous Exam Cell, and guide cohort placement readiness.
+              Review student codebase proofs, synchronize grade correction claims with Autonomous Exam Cell, and track mentee academic readiness.
             </p>
           </div>
 
@@ -144,7 +128,7 @@ export default function MentorDashboardPage() {
         </div>
       </div>
 
-      {/* 2. Top Metric Cards */}
+      {/* 2. Real-Time Metric KPI Cards */}
       {cohortSummary && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
           <div className="p-4 md:p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-400">
@@ -176,7 +160,7 @@ export default function MentorDashboardPage() {
               PLACEMENT READY
             </span>
             <div className="text-2xl md:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-              {mentees.filter((m) => m.is_placement_ready).length || cohortSummary.placement_ready_count}
+              {placementReadyCount}
               <span className="text-xs font-normal text-slate-400"> / {mentees.length || cohortSummary.total_students}</span>
             </div>
             <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 block">
@@ -186,7 +170,7 @@ export default function MentorDashboardPage() {
 
           <div className="p-4 md:p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-400">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
-              EVIDENCE VERIFICATION
+              PENDING PROOFS
             </span>
             <div className="text-2xl md:text-3xl font-extrabold text-amber-600 dark:text-amber-400">
               {pendingApprovalsCount} <span className="text-xs font-normal text-slate-400">Proofs</span>
@@ -210,116 +194,199 @@ export default function MentorDashboardPage() {
         </div>
       )}
 
-      {/* 3. Navigation Workspace Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2 overflow-x-auto text-xs font-bold">
-        <button
-          onClick={() => setActiveTab('approvals')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shrink-0 ${
-            activeTab === 'approvals'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <ShieldCheck className="w-4 h-4" />
-          <span>Evidence Verification Desk</span>
-          {pendingApprovalsCount > 0 && (
-            <span
-              className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                activeTab === 'approvals'
-                  ? 'bg-white text-indigo-700'
-                  : 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300'
-              }`}
-            >
-              {pendingApprovalsCount}
-            </span>
-          )}
-        </button>
+      {/* 3. Dedicated Workspace Navigation Cards (Each points to its dedicated PAGE!) */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          Mentor Workspace Pages
+        </h3>
 
-        <button
-          onClick={() => setActiveTab('corrections')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shrink-0 ${
-            activeTab === 'corrections'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <FileCheck2 className="w-4 h-4" />
-          <span>Contineo ERP Corrections</span>
-          {pendingCorrectionsCount > 0 && (
-            <span
-              className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                activeTab === 'corrections'
-                  ? 'bg-white text-indigo-700'
-                  : 'bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300'
-              }`}
-            >
-              {pendingCorrectionsCount}
-            </span>
-          )}
-        </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Card 1: Evidence Verification Desk Page */}
+          <Link
+            href="/mentor/verifications"
+            className="p-5 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 hover:shadow-lg transition-all group block"
+          >
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              {pendingApprovalsCount > 0 && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30">
+                  {pendingApprovalsCount} Action Required
+                </span>
+              )}
+            </div>
 
-        <button
-          onClick={() => setActiveTab('mentees')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shrink-0 ${
-            activeTab === 'mentees'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Mentee Academic Directory</span>
-          <span className="text-[10px] opacity-70">({mentees.length})</span>
-        </button>
+            <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors flex items-center justify-between">
+              <span>Faculty Evidence Verification Desk</span>
+              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+              Dedicated page to review submitted GitHub code repositories, live projects, and certificate PDFs from Supabase Storage. Endorsements unlock recruiter points.
+            </p>
+          </Link>
 
-        <button
-          onClick={() => setActiveTab('analytics')}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl transition-all shrink-0 ${
-            activeTab === 'analytics'
-              ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
-              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
-          }`}
-        >
-          <BarChart3 className="w-4 h-4" />
-          <span>Skill Gap Analytics & AI</span>
-        </button>
+          {/* Card 2: Contineo ERP Correction Desk Page */}
+          <Link
+            href="/mentor/corrections"
+            className="p-5 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 hover:border-purple-500/50 hover:shadow-lg transition-all group block"
+          >
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">
+                <FileCheck2 className="w-6 h-6" />
+              </div>
+              {pendingCorrectionsCount > 0 && (
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-purple-100 dark:bg-purple-500/20 text-purple-700 dark:text-purple-300 border border-purple-300 dark:border-purple-500/30">
+                  {pendingCorrectionsCount} Pending
+                </span>
+              )}
+            </div>
+
+            <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors flex items-center justify-between">
+              <span>Academic ERP Correction Desk</span>
+              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+              Dedicated page to validate student revaluation claims, makeup exam backlog clearances, and synchronize Contineo ERP records with Autonomous Exam Cell.
+            </p>
+          </Link>
+
+          {/* Card 3: Mentee Student Directory Page */}
+          <Link
+            href="/mentor/mentees"
+            className="p-5 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:shadow-lg transition-all group block"
+          >
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/20">
+                <Users className="w-6 h-6" />
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30">
+                {mentees.length} Students
+              </span>
+            </div>
+
+            <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors flex items-center justify-between">
+              <span>Mentee Student Directory & Academic Standings</span>
+              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+              Dedicated page to search, filter, and track all mentees across 15 engineering branches with Contineo CGPA, active backlogs, and verified skill counts.
+            </p>
+          </Link>
+
+          {/* Card 4: Cohort Skill Gap Analytics Page */}
+          <Link
+            href="/mentor/analytics"
+            className="p-5 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:shadow-lg transition-all group block"
+          >
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20">
+                <BarChart3 className="w-6 h-6" />
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-500/30">
+                Live Recharts
+              </span>
+            </div>
+
+            <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center justify-between">
+              <span>Cohort Skill Gap Analytics & Interventions</span>
+              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
+            </h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
+              Dedicated page displaying automated skill gap percentage bar charts across the batch and recommended faculty workshops.
+            </p>
+          </Link>
+        </div>
       </div>
 
-      {/* 4. Active Tab Content */}
-      {activeTab === 'approvals' && (
-        <div id="verification-desk" className="animate-in fade-in duration-200">
-          <MentorApprovalDesk
-            pendingSubmissions={submissions}
-            onRefresh={fetchMentorData}
-            reviewerName={user?.full_name ? `${user.full_name} (Faculty Mentor)` : undefined}
-          />
-        </div>
-      )}
+      {/* 4. Live Queues Preview */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* Recent Pending Evidence */}
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-3">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-500" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Pending Code & Credential Proofs ({pendingApprovalsCount})
+              </h4>
+            </div>
+            <Link
+              href="/mentor/verifications"
+              className="text-xs font-bold text-emerald-600 dark:text-emerald-400 hover:underline flex items-center gap-1"
+            >
+              <span>View All</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
 
-      {activeTab === 'corrections' && (
-        <div id="correction-desk" className="animate-in fade-in duration-200">
-          <MentorCorrectionDesk
-            requests={corrections}
-            onRefresh={fetchMentorData}
-          />
+          <div className="space-y-2.5">
+            {submissions.filter((s) => s.status === 'pending').slice(0, 3).map((sub) => (
+              <div
+                key={sub.id}
+                className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 text-xs"
+              >
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white">
+                    {sub.student_name} ({sub.student_usn})
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium line-clamp-1">
+                    {sub.title}
+                  </div>
+                </div>
+                <Link
+                  href="/mentor/verifications"
+                  className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] transition-colors shrink-0"
+                >
+                  Review
+                </Link>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
 
-      {activeTab === 'mentees' && (
-        <div id="mentee-roster" className="animate-in fade-in duration-200">
-          <MentorMenteeDirectory
-            mentees={mentees}
-            departments={departments}
-            selectedDept={selectedDept}
-            onSelectDept={setSelectedDept}
-          />
-        </div>
-      )}
+        {/* Recent Academic Corrections */}
+        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-3">
+            <div className="flex items-center gap-2">
+              <FileCheck2 className="w-4 h-4 text-purple-500" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                Pending Contineo Grade Corrections ({pendingCorrectionsCount})
+              </h4>
+            </div>
+            <Link
+              href="/mentor/corrections"
+              className="text-xs font-bold text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-1"
+            >
+              <span>View All</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
+          </div>
 
-      {activeTab === 'analytics' && (
-        <div id="cohort-analytics" className="animate-in fade-in duration-200">
-          <CohortCharts metrics={metrics} interventions={interventions} />
+          <div className="space-y-2.5">
+            {corrections.filter((c) => c.status === 'pending').slice(0, 3).map((c) => (
+              <div
+                key={c.id}
+                className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 text-xs"
+              >
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white">
+                    {c.student_name} ({c.student_usn})
+                  </div>
+                  <div className="text-[11px] text-purple-600 dark:text-purple-400 font-medium line-clamp-1">
+                    {c.subject_or_semester}
+                  </div>
+                </div>
+                <Link
+                  href="/mentor/corrections"
+                  className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-[11px] transition-colors shrink-0"
+                >
+                  Verify
+                </Link>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }

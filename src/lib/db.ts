@@ -207,7 +207,7 @@ export async function dbSubmitEvidence(params: {
     skill_name,
     github_repo_url,
     description,
-    type = 'github_repo',
+    type = 'project',
     document_storage_path,
     credential_url,
   } = params;
@@ -769,6 +769,44 @@ export async function dbGetDepartments(): Promise<Department[]> {
   } catch (err) {
     console.error('dbGetDepartments error:', err);
     return [];
+  }
+}
+
+/**
+ * Student submits an Academic Correction Request to faculty mentor
+ */
+export async function dbSubmitAcademicCorrectionRequest(params: {
+  student_id: string;
+  subject_or_semester: string;
+  claimed_value: string;
+  official_value: string;
+  reason: string;
+}): Promise<AcademicCorrectionRequest | null> {
+  if (!isSupabaseConfigured || !supabase) return null;
+
+  try {
+    const { data, error } = await supabase
+      .from('academic_correction_requests')
+      .insert({
+        student_id: params.student_id,
+        subject_or_semester: params.subject_or_semester,
+        claimed_value: params.claimed_value,
+        official_value: params.official_value,
+        reason: params.reason,
+        status: 'pending',
+      })
+      .select('*')
+      .single();
+
+    if (error || !data) {
+      console.error('dbSubmitAcademicCorrectionRequest error:', error);
+      return null;
+    }
+
+    return data as AcademicCorrectionRequest;
+  } catch (err) {
+    console.error('dbSubmitAcademicCorrectionRequest error:', err);
+    return null;
   }
 }
 
