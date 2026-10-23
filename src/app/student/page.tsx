@@ -26,12 +26,11 @@ import {
   Radio,
   FileSearch,
   Bot,
-  Mic,
-  LogOut,
+  Mic
 } from 'lucide-react';
 
 export default function StudentDashboard() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [studentName, setStudentName] = useState(user?.full_name || 'Pranav R');
   const [usn, setUsn] = useState(user?.usn || '4NM22CS120');
 
@@ -74,20 +73,9 @@ export default function StudentDashboard() {
       {/* Hero Welcome Banner */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-violet-700 p-6 sm:p-10 text-white shadow-xl">
         <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md border border-white/20">
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              <span>Autonomous Contineo ERP Connected · NMAMIT 2026</span>
-            </div>
-
-            <button
-              onClick={() => logout()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-semibold text-white transition-all backdrop-blur-sm"
-              title="Sign Out"
-            >
-              <LogOut className="w-3.5 h-3.5 text-rose-300" />
-              <span>Sign Out</span>
-            </button>
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md border border-white/20">
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Autonomous Contineo ERP Connected · NMAMIT 2026</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
