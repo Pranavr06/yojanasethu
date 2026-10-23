@@ -165,22 +165,53 @@ export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
-    const { data: studentProfiles, error } = await supabase
+    const { data: studentProfiles, error: pErr } = await supabase
       .from('profiles')
       .select('*, departments(code, name)')
       .eq('role', 'student');
 
-    if (error || !studentProfiles || studentProfiles.length === 0) return [];
+    if (pErr) throw pErr;
+    if (!studentProfiles || studentProfiles.length === 0) return [];
 
-    const fullList: FullStudentProfile[] = [];
-    for (const sp of studentProfiles) {
-      const full = await dbGetFullStudent(sp.id);
-      if (full) fullList.push(full);
-    }
-    return fullList;
+    const studentIds = studentProfiles.map((p) => p.id);
+
+    // Parallel bulk query for academic_records and student_skill_passport
+    const [academicRes, skillsRes] = await Promise.all([
+      supabase.from('academic_records').select('*').in('student_id', studentIds),
+      supabase.from('student_skill_passport').select('*').in('student_id', studentIds),
+    ]);
+
+    if (academicRes.error) throw academicRes.error;
+    if (skillsRes.error) throw skillsRes.error;
+
+    const academicMap = new Map<string, AcademicRecord>();
+    (academicRes.data || []).forEach((ar) => academicMap.set(ar.student_id, ar));
+
+    const skillsMap = new Map<string, StudentSkillPassport[]>();
+    (skillsRes.data || []).forEach((sk) => {
+      const existing = skillsMap.get(sk.student_id) || [];
+      existing.push(sk);
+      skillsMap.set(sk.student_id, existing);
+    });
+
+    return studentProfiles.map((sp) => {
+      const profile: Profile = {
+        ...sp,
+        department_code: (sp as any).departments?.code || undefined,
+      };
+      return {
+        profile,
+        academic_record: academicMap.get(sp.id) || null,
+        semester_marks: [],
+        skills: skillsMap.get(sp.id) || [],
+        evidence_submissions: [],
+        roadmaps: [],
+        target_role: `${profile.department_code || 'Engineering'} Core Specialist`,
+      };
+    });
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
-    return [];
+    throw err;
   }
 }
 

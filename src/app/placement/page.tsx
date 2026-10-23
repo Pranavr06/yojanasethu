@@ -1,7 +1,9 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { PlacementStats, PlacementDrive, ApplicationStage } from '@/types';
+import PlacementCharts from '@/components/PlacementCharts';
+import EligibleStudentModal from '@/components/EligibleStudentModal';
 import {
   Briefcase,
   Building2,
@@ -19,6 +21,10 @@ import {
   TrendingUp,
   X,
   Loader2,
+  Download,
+  Filter,
+  Calendar,
+  RotateCcw,
 } from 'lucide-react';
 
 export default function PlacementDashboardPage() {
@@ -29,6 +35,14 @@ export default function PlacementDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  // Enhancement 2: Filter States
+  const [selectedBatch, setSelectedBatch] = useState<string>('all');
+  const [selectedBranch, setSelectedBranch] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+  // Enhancement 3: Eligible Student Viewer State
+  const [auditDrive, setAuditDrive] = useState<PlacementDrive | null>(null);
 
   // Form states for creating new drive
   const [newCompany, setNewCompany] = useState('');
@@ -122,9 +136,233 @@ export default function PlacementDashboardPage() {
     }
   };
 
+  // Available filter options
+  const availableBatches = useMemo(() => {
+    const years = new Set<string>();
+    drives.forEach((d) => {
+      if (d.batch_year) years.add(String(d.batch_year));
+    });
+    years.add('2026');
+    years.add('2025');
+    return Array.from(years).sort().reverse();
+  }, [drives]);
+
+  const availableBranches = useMemo(() => {
+    const branches = new Set<string>();
+    if (stats?.department_stats) {
+      stats.department_stats.forEach((ds) => branches.add(ds.department_code));
+    }
+    drives.forEach((d) => {
+      if (Array.isArray(d.eligible_branches)) {
+        d.eligible_branches.forEach((b: string) => branches.add(b));
+      }
+    });
+    return Array.from(branches).sort();
+  }, [stats, drives]);
+
+  // Reactive filtering across drives
+  const filteredDrives = useMemo(() => {
+    return drives.filter((d) => {
+      if (selectedBatch !== 'all' && String(d.batch_year) !== selectedBatch) {
+        return false;
+      }
+      if (
+        selectedBranch !== 'all' &&
+        Array.isArray(d.eligible_branches) &&
+        !d.eligible_branches.includes(selectedBranch)
+      ) {
+        return false;
+      }
+      if (selectedStatus !== 'all' && d.recruitment_status !== selectedStatus) {
+        return false;
+      }
+      return true;
+    });
+  }, [drives, selectedBatch, selectedBranch, selectedStatus]);
+
+  // Reactive filtering across applications
+  const filteredApplications = useMemo(() => {
+    const validDriveIds = new Set(filteredDrives.map((d) => d.id));
+
+    return applications.filter((app) => {
+      // If a specific drive is selected in the UI
+      if (selectedDriveId !== 'all' && app.drive_id !== selectedDriveId) {
+        return false;
+      }
+      // If general filters are active, ensure application belongs to a filtered drive
+      if (selectedBatch !== 'all' || selectedStatus !== 'all') {
+        if (!validDriveIds.has(app.drive_id)) {
+          return false;
+        }
+      }
+      // Branch filter on applicant's own department
+      if (selectedBranch !== 'all' && app.student_department !== selectedBranch) {
+        return false;
+      }
+      return true;
+    });
+  }, [applications, filteredDrives, selectedDriveId, selectedBatch, selectedBranch, selectedStatus]);
+
+  // Reactive department statistics
+  const filteredDeptStats = useMemo(() => {
+    if (!stats?.department_stats) return [];
+    if (selectedBranch === 'all') return stats.department_stats;
+    return stats.department_stats.filter((ds) => ds.department_code === selectedBranch);
+  }, [stats, selectedBranch]);
+
+  // Recomputed metric card values reflecting active filters
+  const computedMetrics = useMemo(() => {
+    const activeDrivesCount = filteredDrives.filter(
+      (d) => d.recruitment_status !== 'cancelled' && d.recruitment_status !== 'completed'
+    ).length;
+
+    const offersCount = filteredApplications.filter((a) => a.stage === 'selected').length;
+
+    const ctcValues = filteredDrives
+      .map((d) => Number(d.ctc_lpa))
+      .filter((c) => !isNaN(c) && c > 0);
+
+    const highestCtc = ctcValues.length > 0 ? Math.max(...ctcValues) : 0;
+    const avgCtc = ctcValues.length > 0 ? ctcValues.reduce((a, b) => a + b, 0) / ctcValues.length : 0;
+
+    const eligibleSum = filteredDeptStats.reduce((sum, d) => sum + d.eligible_students, 0);
+    const placedSum = filteredDeptStats.reduce((sum, d) => sum + d.placed_students, 0);
+    const placementRate = eligibleSum > 0 ? ((placedSum / eligibleSum) * 100).toFixed(1) : '0.0';
+
+    return {
+      activeDrivesCount: filteredDrives.length,
+      offersCount: offersCount || (stats?.total_offers ?? 0),
+      highestCtc: Number(highestCtc.toFixed(1)) || (stats?.highest_package_lpa ?? 0),
+      averageCtc: Number(avgCtc.toFixed(1)) || (stats?.average_package_lpa ?? 0),
+      placementRate: stats?.placement_percentage ?? placementRate,
+    };
+  }, [filteredDrives, filteredApplications, filteredDeptStats, stats]);
+
+  const activeSelectedDrive = useMemo(() => {
+    if (selectedDriveId === 'all') return null;
+    return drives.find((d) => d.id === selectedDriveId) || null;
+  }, [drives, selectedDriveId]);
+
+  const handleSelectDrive = (driveId: string) => {
+    if (selectedDriveId === driveId) {
+      setSelectedDriveId('all');
+    } else {
+      setSelectedDriveId(driveId);
+      setTimeout(() => {
+        document.getElementById('student-offers')?.scrollIntoView({ behavior: 'smooth' });
+      }, 50);
+    }
+  };
+
+  const hasActiveFilters =
+    selectedBatch !== 'all' || selectedBranch !== 'all' || selectedStatus !== 'all' || selectedDriveId !== 'all';
+
+  const resetFilters = () => {
+    setSelectedBatch('all');
+    setSelectedBranch('all');
+    setSelectedStatus('all');
+    setSelectedDriveId('all');
+  };
+
+  // Enhancement 4: CSV Export with RFC 4180 Escaping and Security Safeguards
+  const handleExportCsv = () => {
+    const escapeCsvCell = (val: any): string => {
+      if (val === null || val === undefined) return '';
+      const str = String(val).trim();
+      if (
+        str.includes(',') ||
+        str.includes('"') ||
+        str.includes('\n') ||
+        str.includes('\r')
+      ) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    let headers: string[];
+    let dataRows: string[][];
+    let filePrefix: string;
+
+    if (filteredApplications.length > 0) {
+      // Columns: Authorized Institutional Placement Applications
+      headers = [
+        'Student Full Name',
+        'USN',
+        'Department / Branch',
+        'Contineo CGPA',
+        'Exam Cell Verified',
+        'Recruitment Drive Company',
+        'Role Title',
+        'Package CTC (LPA)',
+        'Application Stage',
+        'Submission Timestamp',
+      ];
+
+      dataRows = filteredApplications.map((app) => [
+        escapeCsvCell(app.student_name || 'Student'),
+        escapeCsvCell(app.student_usn || ''),
+        escapeCsvCell(app.student_department || ''),
+        escapeCsvCell(typeof app.cgpa === 'number' ? app.cgpa.toFixed(2) : app.cgpa || ''),
+        escapeCsvCell(app.is_contineo_verified ? 'Yes' : 'No'),
+        escapeCsvCell(app.company_name || ''),
+        escapeCsvCell(app.role_title || ''),
+        escapeCsvCell(app.ctc_lpa || ''),
+        escapeCsvCell(app.stage || 'applied'),
+        escapeCsvCell(app.applied_at ? new Date(app.applied_at).toLocaleString() : ''),
+      ]);
+      filePrefix = 'Applications';
+    } else if (filteredDrives.length > 0) {
+      // Columns: Filtered Campus Recruitment Drives Summary
+      headers = [
+        'Company Name',
+        'Role Title',
+        'Package CTC (LPA)',
+        'Min CGPA Cutoff',
+        'Max Backlogs Allowed',
+        'Eligible Branches',
+        'Batch Year',
+        'Eligible Students Count',
+        'Recruitment Status',
+      ];
+
+      dataRows = filteredDrives.map((d) => [
+        escapeCsvCell(d.company_name || ''),
+        escapeCsvCell(d.role_title || ''),
+        escapeCsvCell(d.ctc_lpa || ''),
+        escapeCsvCell(typeof d.min_cgpa === 'number' ? d.min_cgpa.toFixed(2) : d.min_cgpa || ''),
+        escapeCsvCell(d.max_active_backlogs ?? 0),
+        escapeCsvCell(Array.isArray(d.eligible_branches) ? d.eligible_branches.join('; ') : ''),
+        escapeCsvCell(d.batch_year || ''),
+        escapeCsvCell(d.eligible_students_count ?? 0),
+        escapeCsvCell(d.recruitment_status || 'published'),
+      ]);
+      filePrefix = 'Drives_Summary';
+    } else {
+      return;
+    }
+
+    const csvContent = [headers.join(','), ...dataRows.map((r) => r.join(','))].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    const batchLabel = selectedBatch !== 'all' ? selectedBatch : 'AllBatches';
+    const branchLabel = selectedBranch !== 'all' ? selectedBranch : 'AllBranches';
+    link.setAttribute(
+      'download',
+      `NMAMIT_Placement_${filePrefix}_${batchLabel}_${branchLabel}_${Date.now()}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    // Ensure browser download lifecycle completes before revoking blob URL
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   return (
     <div className="space-y-6">
-      {/* 1. Placement Hero Banner (Matching reference image UDP 22 style) */}
+      {/* 1. Placement Hero Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1E1B4B] via-[#0F172A] to-[#1E1B4B] border border-indigo-500/30 p-6 md:p-8 text-white shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2">
@@ -164,17 +402,109 @@ export default function PlacementDashboardPage() {
         </div>
       </div>
 
-      {/* 2. Side-by-Side Metric Cards (Matching reference picture COMMUTERS & BOARDING STOPS) */}
+      {/* Enhancement 2: Placement Control Toolbar (Filters & CSV Export) */}
+      <div className="glass-panel p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <div className="flex items-center gap-1.5 text-slate-500 dark:text-slate-400 font-semibold pr-1">
+            <Filter className="w-4 h-4 text-indigo-500" />
+            <span>Filters:</span>
+          </div>
+
+          {/* Batch Year Filter */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-slate-600 dark:text-slate-400 text-[11px] font-medium">Batch:</label>
+            <select
+              value={selectedBatch}
+              onChange={(e) => setSelectedBatch(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="all">All Batches</option>
+              {availableBatches.map((batch) => (
+                <option key={batch} value={batch}>
+                  Batch {batch}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Branch / Department Filter */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-slate-600 dark:text-slate-400 text-[11px] font-medium">Branch:</label>
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="all">All Branches</option>
+              {availableBranches.map((br) => (
+                <option key={br} value={br}>
+                  {br}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Drive Status Filter */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-slate-600 dark:text-slate-400 text-[11px] font-medium">Status:</label>
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:border-indigo-500"
+            >
+              <option value="all">All Statuses</option>
+              <option value="published">Published</option>
+              <option value="ongoing">Ongoing</option>
+              <option value="completed">Completed</option>
+              <option value="draft">Draft</option>
+            </select>
+          </div>
+
+          {/* Reset Filters button */}
+          {hasActiveFilters && (
+            <button
+              onClick={resetFilters}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 font-medium transition-colors"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Reset</span>
+            </button>
+          )}
+        </div>
+
+        {/* Enhancement 4: CSV Export Button */}
+        <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+          <button
+            onClick={handleExportCsv}
+            disabled={filteredApplications.length === 0 && filteredDrives.length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold text-xs shadow-md shadow-emerald-600/20 transition-all hover:scale-[1.02]"
+            title="Download CSV containing authorized placement records"
+          >
+            <Download className="w-4 h-4" />
+            <span>
+              Export Filtered CSV (
+              {filteredApplications.length > 0
+                ? `${filteredApplications.length} Apps`
+                : `${filteredDrives.length} Drives`}
+              )
+            </span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Side-by-Side Metric Cards (Reactively updated from computedMetrics) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-400 dark:hover:border-slate-700">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
             ACTIVE DRIVES
           </span>
           <div className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white">
-            {drives.length} <span className="text-xs font-normal text-slate-400">Companies</span>
+            {computedMetrics.activeDrivesCount} <span className="text-xs font-normal text-slate-400">Drives</span>
           </div>
           <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 block truncate">
-            {drives.length > 0 ? drives.map((d) => d.company_name).slice(0, 3).join(', ') : 'No Active Drives'}
+            {filteredDrives.length > 0
+              ? filteredDrives.map((d) => d.company_name).slice(0, 3).join(', ')
+              : 'No matching drives'}
           </span>
         </div>
 
@@ -183,10 +513,10 @@ export default function PlacementDashboardPage() {
             OFFERS GENERATED
           </span>
           <div className="text-2xl md:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-            {stats ? stats.total_offers : 0} <span className="text-xs font-normal text-slate-400">Offers</span>
+            {computedMetrics.offersCount} <span className="text-xs font-normal text-slate-400">Offers</span>
           </div>
           <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 block">
-            Placement Rate: {stats ? `${stats.placement_percentage}%` : 'N/A'}
+            Placement Rate: {computedMetrics.placementRate}%
           </span>
         </div>
 
@@ -195,10 +525,10 @@ export default function PlacementDashboardPage() {
             HIGHEST PACKAGE
           </span>
           <div className="text-2xl md:text-3xl font-extrabold text-purple-600 dark:text-purple-400">
-            {stats ? stats.highest_package_lpa : 0} <span className="text-xs font-normal text-slate-400">LPA</span>
+            {computedMetrics.highestCtc} <span className="text-xs font-normal text-slate-400">LPA</span>
           </div>
           <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 block">
-            Avg CTC: {stats ? `${stats.average_package_lpa} LPA` : 'N/A'}
+            Avg CTC: {computedMetrics.averageCtc} LPA
           </span>
         </div>
 
@@ -215,13 +545,20 @@ export default function PlacementDashboardPage() {
         </div>
       </div>
 
+      {/* Enhancement 1: Placement Analytics (Department Progress, CTC Distribution, Application Funnel) */}
+      <PlacementCharts
+        departmentStats={filteredDeptStats}
+        drives={filteredDrives}
+        applications={filteredApplications}
+      />
+
       {/* 3. Active Campus Recruitment Drives Grid */}
       <div id="drives-list" className="glass-panel p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-sm space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-200/80 dark:border-slate-800/80">
           <div className="flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-              Active & Published Campus Drives ({drives.length})
+              Campus Drives & Cutoff Rules ({filteredDrives.length})
             </h3>
           </div>
           <span className="text-xs text-slate-500 dark:text-slate-400">
@@ -230,12 +567,12 @@ export default function PlacementDashboardPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {drives.length === 0 ? (
+          {filteredDrives.length === 0 ? (
             <div className="col-span-full py-10 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-              No placement drives found in database. Click &quot;Post New Campus Drive&quot; to publish a new drive.
+              No placement drives found matching the selected filters.
             </div>
           ) : (
-            drives.map((d) => (
+            filteredDrives.map((d) => (
             <div
               key={d.id}
               className={`p-4 rounded-xl border transition-all ${
@@ -272,25 +609,41 @@ export default function PlacementDashboardPage() {
                   <span>Eligible Branches:</span>
                   <strong className="text-slate-900 dark:text-white">{d.eligible_branches.join(', ')}</strong>
                 </div>
+                <div className="flex justify-between">
+                  <span>Batch Year:</span>
+                  <strong className="text-slate-900 dark:text-white font-mono">{d.batch_year || 2026}</strong>
+                </div>
               </div>
 
-              {/* Dynamically calculated live counts */}
-              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/80 dark:border-slate-800/80">
+              {/* Dynamically calculated live counts + Enhancement 3: Check Eligibility Button */}
+              <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-200/80 dark:border-slate-800/80 gap-1.5 flex-wrap">
                 <span className="text-emerald-700 dark:text-emerald-400 font-semibold flex items-center gap-1">
                   <Users className="w-3.5 h-3.5" />
                   {d.eligible_students_count} Eligible
                 </span>
 
-                <button
-                  onClick={() => setSelectedDriveId(selectedDriveId === d.id ? 'all' : d.id)}
-                  className={`text-[11px] px-3 py-1 rounded-lg font-bold transition-all ${
-                    selectedDriveId === d.id
-                      ? 'bg-indigo-600 text-white'
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {selectedDriveId === d.id ? 'Viewing Roster' : 'View Applicants'}
-                </button>
+                <div className="flex items-center gap-1.5">
+                  {/* Enhancement 3: Trigger for EligibleStudentModal */}
+                  <button
+                    onClick={() => setAuditDrive(d)}
+                    className="text-[11px] px-2.5 py-1 rounded-lg font-bold bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center gap-1"
+                    title="Audit student cohort against this drive's mandatory criteria"
+                  >
+                    <ShieldCheck className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                    <span>Audit Eligibility</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleSelectDrive(d.id)}
+                    className={`text-[11px] px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      selectedDriveId === d.id
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {selectedDriveId === d.id ? 'Viewing Roster' : 'View Applicants'}
+                  </button>
+                </div>
               </div>
             </div>
           ))
@@ -299,7 +652,7 @@ export default function PlacementDashboardPage() {
       </div>
 
       {/* 4. Department Placement Readiness Matrix */}
-      {stats && stats.department_stats && (
+      {filteredDeptStats.length > 0 && (
         <div id="department-stats" className="glass-panel p-5 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-sm space-y-4">
           <div className="flex items-center gap-2 pb-2 border-b border-slate-200/80 dark:border-slate-800/80">
             <TrendingUp className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
@@ -309,7 +662,7 @@ export default function PlacementDashboardPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {stats.department_stats.map((dept) => (
+            {filteredDeptStats.map((dept) => (
               <div
                 key={dept.department_code}
                 className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 space-y-2.5"
@@ -357,7 +710,7 @@ export default function PlacementDashboardPage() {
           <div className="flex items-center gap-2">
             <Users className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             <h3 className="text-sm font-semibold text-slate-900 dark:text-white">
-              Candidate Drive Roster & Status Management ({applications.length})
+              Candidate Drive Roster & Status Management ({filteredApplications.length})
             </h3>
           </div>
 
@@ -366,13 +719,77 @@ export default function PlacementDashboardPage() {
           </span>
         </div>
 
-        <div className="space-y-3">
-          {applications.length === 0 ? (
-            <div className="py-8 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-              No candidate applications found in database for this drive.
+        {/* Active Selected Drive Banner */}
+        {activeSelectedDrive && (
+          <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/60 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-indigo-600 text-white">
+                Active Drive
+              </span>
+              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                {activeSelectedDrive.company_name} — {activeSelectedDrive.role_title}
+              </span>
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                ({activeSelectedDrive.ctc_lpa} LPA • Min CGPA {activeSelectedDrive.min_cgpa.toFixed(2)})
+              </span>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setAuditDrive(activeSelectedDrive)}
+                className="text-xs px-3 py-1 rounded-lg bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-semibold hover:bg-indigo-200 dark:hover:bg-indigo-800 transition-colors flex items-center gap-1.5"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Audit Eligibility</span>
+              </button>
+              <button
+                onClick={() => setSelectedDriveId('all')}
+                className="text-xs px-3 py-1 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-semibold hover:bg-slate-300 dark:hover:bg-slate-700 transition-colors flex items-center gap-1"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Clear Filter</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-3">
+          {filteredApplications.length === 0 ? (
+            activeSelectedDrive ? (
+              <div className="py-12 px-4 text-center bg-slate-50/50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 space-y-3">
+                <div className="max-w-md mx-auto space-y-1">
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white">
+                    No candidate applications recorded yet for {activeSelectedDrive.company_name} ({activeSelectedDrive.role_title})
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Students have not submitted profiles for this drive yet.
+                    {typeof activeSelectedDrive.eligible_students_count === 'number' && (
+                      <> {activeSelectedDrive.eligible_students_count} students in the cohort meet the Contineo ERP criteria.</>
+                    )}
+                  </p>
+                </div>
+                <div className="flex items-center justify-center gap-2 pt-1">
+                  <button
+                    onClick={() => setAuditDrive(activeSelectedDrive)}
+                    className="px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow-sm flex items-center gap-1.5 transition-colors"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Audit Eligible Students for This Drive</span>
+                  </button>
+                  <button
+                    onClick={() => setSelectedDriveId('all')}
+                    className="px-3.5 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs transition-colors"
+                  >
+                    Show All Applicants
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-xs text-slate-500 dark:text-slate-400 bg-slate-50/50 dark:bg-slate-900/30 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                No candidate applications found matching the selected filters.
+              </div>
+            )
           ) : (
-            applications.map((app) => (
+            filteredApplications.map((app) => (
             <div
               key={app.id}
               className="p-4 rounded-xl bg-slate-50/70 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all hover:border-slate-300 dark:hover:border-slate-700"
@@ -386,7 +803,7 @@ export default function PlacementDashboardPage() {
                     {app.student_usn}
                   </span>
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30">
-                    {app.student_department} • CGPA {app.cgpa.toFixed(2)}
+                    {app.student_department} • CGPA {typeof app.cgpa === 'number' ? app.cgpa.toFixed(2) : app.cgpa}
                   </span>
                   <span className="text-[10px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1 font-medium bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-500/20">
                     <ShieldCheck className="w-3 h-3" /> Contineo Verified
@@ -574,6 +991,13 @@ export default function PlacementDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* Enhancement 3: Eligible Student Viewer Modal */}
+      <EligibleStudentModal
+        isOpen={Boolean(auditDrive)}
+        onClose={() => setAuditDrive(null)}
+        drive={auditDrive}
+      />
     </div>
   );
 }
