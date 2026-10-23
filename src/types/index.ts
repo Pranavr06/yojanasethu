@@ -194,6 +194,41 @@ export interface Company {
   industry?: string | null;
   tier?: string;
   headquarters?: string | null;
+  contact_email?: string | null;
+  contact_phone?: string | null;
+}
+
+export interface RecruiterProfile {
+  id: string;
+  full_name: string;
+  email: string;
+  phone?: string | null;
+  designation?: string | null;
+  company_name: string;
+  company_id?: string | null;
+  company?: Company | null;
+  website?: string | null;
+  industry?: string | null;
+  tier?: string | null;
+  headquarters?: string | null;
+  avatar_url?: string | null;
+  linkedin_url?: string | null;
+  created_at?: string;
+}
+
+export interface OnboardRecruiterPayload {
+  fullName: string;
+  email: string;
+  password: string;
+  phone?: string;
+  designation?: string;
+  companyName: string;
+  website?: string;
+  industry?: string;
+  tier?: string;
+  headquarters?: string;
+  logoUrl?: string;
+  linkedinUrl?: string;
 }
 
 export interface PlacementDrive {

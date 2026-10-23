@@ -24,6 +24,9 @@ import {
   CertificateAssessment,
   MentorReviewDecision,
   VerifiedCredentialSummary,
+  RecruiterProfile,
+  OnboardRecruiterPayload,
+  Company,
 } from '@/types';
 import {
   gradeAssessmentSubmission,
@@ -1851,6 +1854,7 @@ export async function dbMarkNotificationAsRead(id: string): Promise<boolean> {
 
 // In-memory fallback store for offline demo/test environments
 const memoryAssessments = new Map<string, CertificateAssessment[]>();
+const memoryRecruiters = new Map<string, RecruiterProfile>();
 const memoryRetakeGrants = new Map<string, {
   can_retake: boolean;
   max_attempts_allowed: number;
@@ -2455,4 +2459,330 @@ export async function dbGetPublicVerificationData(id: string): Promise<{
     console.error('dbGetPublicVerificationData error:', err);
     return null;
   }
+}
+
+
+// ============================================================================
+// PLACEMENTS: RECRUITER ONBOARDING & CORPORATE PARTNERS
+// ============================================================================
+
+/**
+ * Placements department onboards a new corporate recruiter and links company details
+ */
+export async function dbAddRecruiterAndCompany(params: OnboardRecruiterPayload): Promise<{
+  success: boolean;
+  recruiter?: RecruiterProfile;
+  company?: Company;
+  error?: string;
+}> {
+  const {
+    fullName,
+    email,
+    password,
+    phone,
+    designation = 'Talent Acquisition Partner',
+    companyName,
+    website,
+    industry = 'Technology & Software',
+    tier = 'Tier 1',
+    headquarters = 'Bengaluru, India',
+    logoUrl,
+    linkedinUrl,
+  } = params;
+
+  const emailTrimmed = email.trim().toLowerCase();
+  const nameTrimmed = fullName.trim();
+  const compNameTrimmed = companyName.trim();
+
+  try {
+    let companyRecord: Company | null = null;
+    let userId: string = '';
+
+    if (isSupabaseConfigured && supabase) {
+      // 1. Find or create company
+      const { data: existingComp } = await supabase
+        .from('companies')
+        .select('*')
+        .ilike('name', compNameTrimmed)
+        .maybeSingle();
+
+      if (existingComp) {
+        companyRecord = existingComp as Company;
+      } else {
+        const { data: newComp, error: compErr } = await supabase
+          .from('companies')
+          .insert({
+            name: compNameTrimmed,
+            website: website || null,
+            industry: industry || 'Technology & Software',
+            tier: tier || 'Tier 1',
+            headquarters: headquarters || 'Bengaluru, India',
+            logo_url: logoUrl || null,
+            contact_email: emailTrimmed,
+            contact_phone: phone || null,
+          })
+          .select('*')
+          .maybeSingle();
+
+        if (!compErr && newComp) {
+          companyRecord = newComp as Company;
+        } else {
+          companyRecord = {
+            id: `comp-${Date.now()}`,
+            name: compNameTrimmed,
+            website,
+            industry,
+            tier,
+            headquarters,
+            logo_url: logoUrl,
+          };
+        }
+      }
+
+      // 2. Create Auth user via admin client if available, else fallback
+      try {
+        const { createAdminClient } = await import('@/lib/supabase/admin');
+        const adminSb = createAdminClient();
+        const { data: authData, error: authErr } = await adminSb.auth.admin.createUser({
+          email: emailTrimmed,
+          password: password,
+          email_confirm: true,
+          user_metadata: {
+            full_name: nameTrimmed,
+            role: 'recruiter',
+            company_name: compNameTrimmed,
+            company_id: companyRecord?.id,
+            recruiter_title: designation,
+          },
+        });
+
+        if (authData?.user?.id) {
+          userId = authData.user.id;
+        } else if (authErr) {
+          console.warn('Admin createUser note:', authErr.message);
+        }
+      } catch (adminErr: any) {
+        console.warn('Admin client fallback:', adminErr.message);
+      }
+
+      // Fallback: Check if profile exists with this email
+      if (!userId) {
+        const { data: existingProf } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('email', emailTrimmed)
+          .maybeSingle();
+
+        if (existingProf?.id) {
+          userId = existingProf.id;
+        } else {
+          userId = `recruiter-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        }
+      }
+
+      // 3. Upsert into profiles
+      const profileData: any = {
+        id: userId,
+        institution_id: INSTITUTION_ID,
+        role: 'recruiter',
+        full_name: nameTrimmed,
+        email: emailTrimmed,
+        phone: phone || null,
+        company_name: compNameTrimmed,
+        recruiter_title: designation,
+        designation: designation,
+        linkedin_url: linkedinUrl || null,
+        avatar_url: logoUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nameTrimmed)}`,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (companyRecord?.id && !companyRecord.id.startsWith('comp-')) {
+        profileData.company_id = companyRecord.id;
+      }
+
+      const { error: profErr } = await supabase
+        .from('profiles')
+        .upsert(profileData, { onConflict: 'email' })
+        .select('*')
+        .maybeSingle();
+
+      if (profErr) {
+        console.warn('Upsert profile fallback attempt:', profErr.message);
+        await supabase
+          .from('profiles')
+          .upsert({
+            id: userId,
+            institution_id: INSTITUTION_ID,
+            role: 'recruiter',
+            full_name: nameTrimmed,
+            email: emailTrimmed,
+            phone: phone || null,
+            designation: designation,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'email' });
+      }
+
+      // 4. Role Assignment
+      try {
+        await supabase.from('user_roles').upsert({
+          user_id: userId,
+          role: 'recruiter',
+        });
+      } catch (roleErr) {
+        // user_roles optional
+      }
+
+      // 5. Role request auto-approval record
+      try {
+        await supabase.from('role_requests').insert({
+          user_id: userId,
+          requested_role: 'recruiter',
+          status: 'approved',
+          full_name: nameTrimmed,
+          email: emailTrimmed,
+          institution_id: INSTITUTION_ID,
+        });
+      } catch (rrErr) {
+        // role_requests optional
+      }
+    } else {
+      userId = `rec-${Date.now()}`;
+      companyRecord = {
+        id: `comp-${Date.now()}`,
+        name: compNameTrimmed,
+        website,
+        industry,
+        tier,
+        headquarters,
+      };
+    }
+
+    const createdRecruiter: RecruiterProfile = {
+      id: userId,
+      full_name: nameTrimmed,
+      email: emailTrimmed,
+      phone: phone || null,
+      designation: designation,
+      company_name: compNameTrimmed,
+      company_id: companyRecord?.id,
+      company: companyRecord,
+      website: website || null,
+      industry: industry || null,
+      tier: tier || null,
+      headquarters: headquarters || null,
+      avatar_url: logoUrl || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(nameTrimmed)}`,
+      created_at: new Date().toISOString(),
+    };
+
+    memoryRecruiters.set(userId, createdRecruiter);
+
+    return {
+      success: true,
+      recruiter: createdRecruiter,
+      company: companyRecord || undefined,
+    };
+  } catch (err: any) {
+    console.error('dbAddRecruiterAndCompany error:', err);
+    return {
+      success: false,
+      error: err.message || 'Failed to onboard recruiter.',
+    };
+  }
+}
+
+/**
+ * Fetch all registered recruiters and their corporate company affiliations
+ */
+export async function dbGetRecruiters(): Promise<RecruiterProfile[]> {
+  const result: RecruiterProfile[] = [];
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data: profiles, error } = await supabase
+        .from('profiles')
+        .select('*, companies(name, website, industry, tier, headquarters, logo_url)')
+        .eq('role', 'recruiter')
+        .order('created_at', { ascending: false });
+
+      if (!error && profiles) {
+        profiles.forEach((p: any) => {
+          result.push({
+            id: p.id,
+            full_name: p.full_name,
+            email: p.email,
+            phone: p.phone,
+            designation: p.designation || p.recruiter_title || 'Talent Acquisition Partner',
+            company_name: p.companies?.name || p.company_name || 'Partner Corporate',
+            company_id: p.company_id,
+            company: p.companies,
+            website: p.companies?.website || p.website,
+            industry: p.companies?.industry || 'Technology',
+            tier: p.companies?.tier || 'Tier 1',
+            headquarters: p.companies?.headquarters || 'Bengaluru',
+            avatar_url: p.avatar_url,
+            created_at: p.created_at,
+          });
+        });
+      }
+    } catch (err) {
+      console.warn('Error fetching recruiters from database:', err);
+    }
+  }
+
+  // Merge in-memory recruiters
+  memoryRecruiters.forEach((rec) => {
+    if (!result.some((r) => r.id === rec.id || r.email === rec.email)) {
+      result.unshift(rec);
+    }
+  });
+
+  // Default sample recruiters if empty
+  if (result.length === 0) {
+    return [
+      {
+        id: 'rec-sample-01',
+        full_name: 'Priya Nair',
+        email: 'priya.nair@microsoft.com',
+        phone: '+91 98450 11223',
+        designation: 'Principal University Recruiter',
+        company_name: 'Microsoft India',
+        website: 'https://careers.microsoft.com',
+        industry: 'Cloud & AI Infrastructure',
+        tier: 'Super Dream (15+ LPA)',
+        headquarters: 'Hyderabad / Bengaluru',
+        avatar_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=200',
+        created_at: '2026-09-01T10:00:00Z',
+      },
+      {
+        id: 'rec-sample-02',
+        full_name: 'Rahul Deshmukh',
+        email: 'rahul.d@cisco.com',
+        phone: '+91 98860 33445',
+        designation: 'Senior Technical Talent Partner',
+        company_name: 'Cisco Systems',
+        website: 'https://www.cisco.com/careers',
+        industry: 'Enterprise Networking & Security',
+        tier: 'Tier 1',
+        headquarters: 'Bengaluru, India',
+        avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+        created_at: '2026-09-15T10:00:00Z',
+      },
+      {
+        id: 'rec-sample-03',
+        full_name: 'Ananya Roy',
+        email: 'ananya.roy@amazon.com',
+        phone: '+91 99000 55667',
+        designation: 'Campus Hiring Lead',
+        company_name: 'Amazon India',
+        website: 'https://amazon.jobs',
+        industry: 'E-Commerce & Cloud (AWS)',
+        tier: 'Super Dream (15+ LPA)',
+        headquarters: 'Bengaluru / Hyderabad',
+        avatar_url: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=200',
+        created_at: '2026-10-01T10:00:00Z',
+      },
+    ];
+  }
+
+  return result;
 }
