@@ -39,36 +39,37 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
     pathname === '/forgot-password' ||
     pathname === '/reset-password' ||
     pathname.startsWith('/auth/');
+  const isStudentDashboard = pathname === '/student' || pathname === '/student/dashboard';
 
-  if (isAuthPage) {
-    return <main className="min-h-screen bg-slate-50 dark:bg-[#070B14]">{children}</main>;
+  if (isAuthPage || isStudentDashboard) {
+    return (
+      <main className="min-h-screen w-full bg-slate-50 text-slate-900 dark:bg-[#070B14] dark:text-slate-100">
+        {children}
+      </main>
+    );
   }
 
   const role = user?.role || 'student';
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#070B14] text-slate-900 dark:text-slate-100 flex flex-col transition-colors">
-      {/* 1. Left Sidebar Panel (Fixed on Desktop, Slide-over Drawer on Mobile) */}
+    <div className="flex min-h-screen flex-col bg-slate-50 text-slate-900 dark:bg-[#070B14] dark:text-slate-100">
       <Sidebar
         mobileOpen={mobileSidebarOpen}
         onClose={() => setMobileSidebarOpen(false)}
       />
 
-      {/* 2. Main Content Area (Offset by sidebar on desktop lg:pl-72) */}
-      <div className="lg:pl-72 flex-1 flex flex-col min-w-0 transition-all">
-        {/* Top Header Bar */}
-        <header className="sticky top-0 z-30 h-16 border-b border-slate-200/80 dark:border-slate-800/80 bg-white/80 dark:bg-[#0B1120]/80 backdrop-blur-md px-4 sm:px-6 lg:px-8 flex items-center justify-between transition-colors">
+      <div className="flex min-w-0 flex-1 flex-col transition-all lg:pl-72">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-slate-200 bg-white/90 px-4 backdrop-blur-md dark:border-slate-800 dark:bg-[#0B1120]/90 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            {/* Hamburger Button on Mobile */}
             <button
               onClick={() => setMobileSidebarOpen(true)}
-              className="lg:hidden p-2 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+              className="rounded-xl border border-slate-200 p-2 dark:border-slate-800 lg:hidden"
               aria-label="Open navigation menu"
             >
-              <Menu className="w-5 h-5" />
+              <Menu className="h-5 w-5" />
             </button>
 
-            {/* Top Desk Pill Badge (matching reference screenshot's BUS COORDINATOR DESK) */}
+            {/* Top Desk Pill Badge */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 shadow-sm">
                 {role === 'admin' ? (
@@ -104,75 +105,53 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
                 )}
               </span>
 
-              {/* Contineo Live indicator */}
-              <span className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
-                <Radio className="w-2.5 h-2.5 text-emerald-500 animate-pulse" />
-                <span>Contineo Verified</span>
+              <span className="hidden items-center gap-1 text-xs text-emerald-600 md:inline-flex">
+                <Radio className="h-3 w-3" />
+                Contineo Verified
               </span>
             </div>
           </div>
 
-          {/* Right Controls: Notification Bell, Theme Switcher & User Profile Menu */}
+{/* Right Controls: Notification Bell, Theme Switcher & User Profile Menu */}
           <div className="flex items-center gap-2.5">
             <NotificationBell />
 
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors shadow-sm"
-              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} mode`}
-              aria-label="Toggle Theme"
+              className="rounded-xl border border-slate-200 p-2 dark:border-slate-800"
+              title="Toggle theme"
+              aria-label="Toggle theme"
             >
-              {theme === 'dark' ? (
-                <Sun className="w-4 h-4 text-amber-400" />
-              ) : (
-                <Moon className="w-4 h-4 text-slate-700" />
-              )}
+              {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
             </button>
 
-            {/* User Dropdown / Sign Out */}
             {user && (
               <div className="relative">
                 <button
                   onClick={() => setProfileOpen(!profileOpen)}
-                  className="flex items-center gap-2 p-1.5 pr-2.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-900 text-slate-700 dark:text-slate-200 transition-colors text-xs font-semibold"
+                  className="flex items-center gap-2 rounded-xl border border-slate-200 p-2 text-xs dark:border-slate-800"
                 >
-                  <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 font-bold text-white">
                     {user.full_name?.charAt(0) || 'U'}
-                  </div>
-                  <span className="hidden sm:inline font-medium max-w-[120px] truncate">
+                  </span>
+                  <span className="hidden max-w-[120px] truncate sm:inline">
                     {user.full_name}
                   </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                  <ChevronDown size={14} />
                 </button>
 
                 {profileOpen && (
-                  <div className="absolute right-0 mt-2 w-56 glass-panel bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl p-2 text-xs z-50 animate-in fade-in duration-100">
-                    <div className="p-2.5 border-b border-slate-100 dark:border-slate-800">
-                      <p className="font-bold text-slate-900 dark:text-white truncate">
-                        {user.full_name}
-                      </p>
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                        {user.email}
-                      </p>
-                      <div className="mt-1 flex items-center gap-1">
-                        <span className="text-[10px] uppercase font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                          {user.role}
-                        </span>
-                        {user.usn && (
-                          <span className="text-[10px] font-mono text-slate-500 dark:text-slate-400">
-                            {user.usn}
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                  <div className="absolute right-0 z-50 mt-2 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-xl dark:border-slate-800 dark:bg-slate-900">
+                    <p className="truncate text-sm font-bold">{user.full_name}</p>
+                    <p className="truncate text-xs text-slate-500">{user.email}</p>
 
                     <Link
                       href="/login"
                       onClick={() => setProfileOpen(false)}
-                      className="w-full flex items-center gap-2 p-2 mt-1 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 font-medium"
+                      className="mt-3 block rounded-lg p-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
                     >
-                      <span>Switch Persona</span>
+                      Switch Persona
                     </Link>
 
                     <button
@@ -180,10 +159,10 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
                         setProfileOpen(false);
                         logout();
                       }}
-                      className="w-full flex items-center gap-2 p-2 mt-1 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors font-semibold"
+                      className="flex w-full items-center gap-2 rounded-lg p-2 text-left text-sm text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30"
                     >
-                      <LogOut className="w-3.5 h-3.5" />
-                      <span>Sign Out</span>
+                      <LogOut size={15} />
+                      Sign Out
                     </button>
                   </div>
                 )}
@@ -192,25 +171,12 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
           </div>
         </header>
 
-        {/* Page Content Body */}
-        <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
           {children}
         </main>
 
-        {/* Minimal Enterprise Footer */}
-        <footer className="border-t border-slate-200 dark:border-slate-800/80 bg-white/50 dark:bg-[#0B1120]/50 py-5 text-center text-xs text-slate-500 dark:text-slate-400 transition-colors">
-          <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-            <p>
-              Nexathon 2026 • SDIT Mangaluru •{' '}
-              <span className="text-slate-800 dark:text-slate-200 font-semibold">
-                Team Neural Forge
-              </span>{' '}
-              (Preethika, Prajwala, Pranav, Prathwik)
-            </p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500">
-              NMAMIT Autonomous Contineo ERP & Supabase Production Gateway
-            </p>
-          </div>
+        <footer className="border-t border-slate-200 py-5 text-center text-xs text-slate-500 dark:border-slate-800">
+          Nexathon 2026 · Team Neural Forge
         </footer>
       </div>
     </div>

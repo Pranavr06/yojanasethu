@@ -1,4 +1,4 @@
-import {
+﻿import {
   Profile,
   AcademicRecord,
   SemesterMark,
@@ -19,6 +19,7 @@ import {
   InAppNotification,
   AnnouncementStatus,
   JobType,
+
 } from '@/types';
 import { createClient } from '@supabase/supabase-js';
 
@@ -167,54 +168,31 @@ export async function dbGetFullStudent(studentIdOrUsn: string): Promise<FullStud
 /**
  * Fetch all students from database
  */
+
 export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
-    const { data: studentProfiles, error: pErr } = await supabase
+    const { data: studentProfiles, error } = await supabase
       .from('profiles')
-      .select('*, departments(code, name)')
+      .select('id')
       .eq('role', 'student');
 
-    if (pErr) throw pErr;
+    if (error) {
+      console.error('dbGetAllStudents error:', error);
+      throw error;
+    }
+
     if (!studentProfiles || studentProfiles.length === 0) return [];
 
-    const studentIds = studentProfiles.map((p) => p.id);
+    // Fetch full student profiles, including academic records and evidence.
+    const results = await Promise.all(
+      studentProfiles.map((student) => dbGetFullStudent(student.id))
+    );
 
-    // Parallel bulk query for academic_records and student_skill_passport
-    const [academicRes, skillsRes] = await Promise.all([
-      supabase.from('academic_records').select('*').in('student_id', studentIds),
-      supabase.from('student_skill_passport').select('*').in('student_id', studentIds),
-    ]);
-
-    if (academicRes.error) throw academicRes.error;
-    if (skillsRes.error) throw skillsRes.error;
-
-    const academicMap = new Map<string, AcademicRecord>();
-    (academicRes.data || []).forEach((ar) => academicMap.set(ar.student_id, ar));
-
-    const skillsMap = new Map<string, StudentSkillPassport[]>();
-    (skillsRes.data || []).forEach((sk) => {
-      const existing = skillsMap.get(sk.student_id) || [];
-      existing.push(sk);
-      skillsMap.set(sk.student_id, existing);
-    });
-
-    return studentProfiles.map((sp) => {
-      const profile: Profile = {
-        ...sp,
-        department_code: (sp as any).departments?.code || undefined,
-      };
-      return {
-        profile,
-        academic_record: academicMap.get(sp.id) || null,
-        semester_marks: [],
-        skills: skillsMap.get(sp.id) || [],
-        evidence_submissions: [],
-        roadmaps: [],
-        target_role: `${profile.department_code || 'Engineering'} Core Specialist`,
-      };
-    });
+    return results.filter(
+      (student): student is FullStudentProfile => student !== null
+    );
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
     throw err;
@@ -244,7 +222,7 @@ export async function dbSubmitEvidence(params: {
     skill_name,
     github_repo_url,
     description,
-    type = 'project',
+    type = 'github_repo',
     document_storage_path,
     credential_url,
   } = params;
@@ -373,7 +351,7 @@ export async function dbVerifySubmission(params: {
         const { data: updatedSkill } = await supabase
           .from('student_skill_passport')
           .update({
-            tier: 'faculty_verified',
+            tier: 'evidenced',
             verification_badge: true,
             evidence_source: `Faculty Review (${reviewer_name || 'Dr. K. Sharma'})`,
             updated_at: new Date().toISOString(),
@@ -389,7 +367,7 @@ export async function dbVerifySubmission(params: {
             student_id: updatedSub.student_id,
             skill_name: skillName,
             category: 'programming',
-            tier: 'faculty_verified',
+            tier: 'evidenced',
             confidence_score: 90,
             evidence_source: `Faculty Review (${reviewer_name || 'Dr. K. Sharma'})`,
             evidence_date: new Date().toISOString().split('T')[0],
@@ -1146,7 +1124,7 @@ function synthesizeAnnouncementsFromDrives(drives: PlacementDrive[]): PlacementA
       role_title: d.role_title,
       job_description: d.job_description || 'Campus recruitment opportunity with pre-placement evaluation.',
       job_type: (d.ctc_lpa >= 12 ? 'Full-time' : 'Internship + Full-time') as JobType,
-      employment_details: `${d.job_location || 'Bengaluru'} • Contineo ERP verified eligibility gate`,
+      employment_details: `${d.job_location || 'Bengaluru'} â€¢ Contineo ERP verified eligibility gate`,
       ctc_lpa: Number(d.ctc_lpa),
       ctc_breakdown: {
         fixed_lpa: fixed,

@@ -1,2 +1,2 @@
-# pathpilot-test
+# Yojanasethu
 AI-powered student career-readiness platform connecting campus placements, verified achievements, learning resources, assessments, and recruiters.
