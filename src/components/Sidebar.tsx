@@ -20,7 +20,6 @@ import {
   CheckCircle2,
   Briefcase,
   Layers,
-  LogOut,
   ExternalLink,
   X,
   Database,
@@ -48,7 +47,7 @@ export default function Sidebar({
   onOpenResumeModal,
 }: SidebarProps) {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const { theme } = useTheme();
 
   // If on login page, don't show sidebar
@@ -590,15 +589,7 @@ export default function Sidebar({
               </div>
             </div>
 
-            {/* Logout Button on Right */}
-            <button
-              onClick={() => logout()}
-              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors shrink-0 ml-1"
-              title="Sign Out"
-              aria-label="Sign Out"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+            
           </div>
         </div>
       </aside>
