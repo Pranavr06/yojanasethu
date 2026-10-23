@@ -17,6 +17,7 @@ import {
   Zap,
   ChevronRight,
   GraduationCap,
+  Layers,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -132,11 +133,37 @@ export default function CareerCoachPage() {
   const { user } = useAuth();
   const [selectedRoleKey, setSelectedRoleKey] = useState<string>('ai-engineer');
   const [analyzing, setAnalyzing] = useState(false);
+  const [userVerifiedSkills, setUserVerifiedSkills] = useState<string[]>([
+    'Python',
+    'TypeScript',
+    'Next.js',
+    'SQL',
+    'PostgreSQL',
+    'React',
+  ]);
+
+  // Load real verified skills from student skill gap endpoint if available
+  useEffect(() => {
+    async function loadSkills() {
+      try {
+        const res = await fetch('/api/student/skill-gap');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.analysis?.skills) {
+            const strengths = data.analysis.skills
+              .filter((s: any) => s.status === 'verified_strength')
+              .map((s: any) => s.skill_name);
+            if (strengths.length > 0) {
+              setUserVerifiedSkills((prev) => Array.from(new Set([...prev, ...strengths])));
+            }
+          }
+        }
+      } catch {}
+    }
+    loadSkills();
+  }, []);
 
   const currentRole = CAREER_PATHS[selectedRoleKey] || CAREER_PATHS['ai-engineer'];
-
-  // User verified skills list for comparison
-  const userVerifiedSkills = ['Python', 'TypeScript', 'Next.js', 'SQL', 'PostgreSQL', 'React'];
 
   const handleRoleChange = (key: string) => {
     setAnalyzing(true);
@@ -157,20 +184,48 @@ export default function CareerCoachPage() {
               AI Career Coach
             </h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20">
-              Predictive Skill Intelligence
+              Strategic Placement Advisory
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Tailored career guidance, skill-gap analysis, and placement readiness predictions aligned with industry hiring criteria.
+            Tailored career guidance and placement path intelligence aligned with Tier-1 recruitment patterns.
           </p>
         </div>
 
-        {/* Action Link to Roadmap */}
+        {/* Action Link to Dedicated Skill Gap Analyzer */}
+        <div className="flex items-center gap-2">
+          <Link
+            href="/student/skill-gap"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white shadow-sm transition-all"
+          >
+            <Target className="w-4 h-4" />
+            <span>AI Skill Gap Analyzer</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </div>
+
+      {/* Featured Banner: Deterministic AI Skill Gap Analyzer Callout */}
+      <div className="rounded-3xl border border-purple-200/80 dark:border-purple-900/40 bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-transparent p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1 max-w-2xl">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300">
+              New: Deterministic Audit
+            </span>
+            <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+              Looking for your empirical Placement Readiness Audit?
+            </h3>
+          </div>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            Check your exact role readiness score (0–100%), verified strengths, demonstrated gaps, and prioritized roadmap across <strong>Software Developer</strong>, <strong>AI/ML Engineer</strong>, and <strong>Cybersecurity Analyst</strong>.
+          </p>
+        </div>
+
         <Link
-          href="/student/roadmap"
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all self-start sm:self-auto"
+          href="/student/skill-gap"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-indigo-600 dark:hover:bg-indigo-400 text-xs font-bold transition-all shadow-sm shrink-0 self-start sm:self-auto"
         >
-          <span>Open 30-Day Roadmap</span>
+          <span>Open Skill Gap Analyzer</span>
           <ArrowRight className="w-3.5 h-3.5" />
         </Link>
       </div>
@@ -178,7 +233,7 @@ export default function CareerCoachPage() {
       {/* Target Career Role Selector Cards */}
       <div className="space-y-3">
         <label className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-          Select Your Target Career Specialization:
+          Explore Career Tracks & Recruitment Requirements:
         </label>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
           {Object.entries(CAREER_PATHS).map(([key, path]) => {
@@ -221,7 +276,7 @@ export default function CareerCoachPage() {
               <div>
                 <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                   <Target className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
-                  Placement Readiness Score
+                  Estimated Readiness Benchmark
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Calculated against {currentRole.role} benchmarks
@@ -243,24 +298,20 @@ export default function CareerCoachPage() {
             {/* Sub-Metric Breakdown */}
             <div className="space-y-3 pt-2 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-400">Contineo Academic Standing (CGPA: 8.85)</span>
-                <span className="font-bold text-emerald-600 dark:text-emerald-400">92% Match</span>
+                <span className="text-slate-600 dark:text-slate-400">Contineo Academic Standing</span>
+                <span className="font-bold text-emerald-600 dark:text-emerald-400">Verified</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600 dark:text-slate-400">Core DSA & Algorithmic Problem Solving</span>
-                <span className="font-bold text-indigo-600 dark:text-indigo-400">75% Match</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">In Practice</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-600 dark:text-slate-400">Applied Tech Stack & Framework Experience</span>
-                <span className="font-bold text-indigo-600 dark:text-indigo-400">82% Match</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-600 dark:text-slate-400">System Design & Cloud Architecture</span>
-                <span className="font-bold text-amber-600 dark:text-amber-400">64% Match</span>
+                <span className="font-bold text-indigo-600 dark:text-indigo-400">Active</span>
               </div>
             </div>
 
-            {/* AI Assessment Note */}
+            {/* Coach Assessment Note */}
             <div className="p-3.5 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/70 dark:border-indigo-800/50 text-xs text-indigo-900 dark:text-indigo-200 leading-relaxed">
               <div className="flex items-center gap-1.5 font-bold mb-1 text-indigo-700 dark:text-indigo-300">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -277,6 +328,22 @@ export default function CareerCoachPage() {
             </h4>
 
             <Link
+              href="/student/skill-gap"
+              className="flex items-center justify-between p-3 rounded-xl border border-purple-200/80 dark:border-purple-900/40 bg-purple-50/30 dark:bg-purple-950/10 hover:bg-purple-50 transition-colors group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-purple-100 dark:bg-purple-900/50 text-purple-600">
+                  <Target className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">Run Detailed Skill Gap Analysis</p>
+                  <p className="text-[11px] text-slate-500">Deterministic scoring & gap isolation</p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-purple-600 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+
+            <Link
               href="/student/dsa-tracker"
               className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group"
             >
@@ -285,24 +352,24 @@ export default function CareerCoachPage() {
                   <Zap className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">Master Graph & DP Algorithms</p>
-                  <p className="text-[11px] text-slate-500">Required for Tier 1 Online Assessments</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">Master Placement DSA Patterns</p>
+                  <p className="text-[11px] text-slate-500">Practice 20 essential patterns</p>
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
             </Link>
 
             <Link
-              href="/student/resume-builder"
+              href="/student/roadmap"
               className="flex items-center justify-between p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors group"
             >
               <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/50 text-purple-600">
-                  <BrainCircuit className="w-4 h-4" />
+                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600">
+                  <BookOpen className="w-4 h-4" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-900 dark:text-white">Align Resume with {currentRole.role}</p>
-                  <p className="text-[11px] text-slate-500">Highlight your verified projects & stack</p>
+                  <p className="text-xs font-bold text-slate-900 dark:text-white">30-Day Preparation Roadmap</p>
+                  <p className="text-[11px] text-slate-500">Structured weekly milestones</p>
                 </div>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-400 group-hover:translate-x-0.5 transition-transform" />
@@ -312,15 +379,15 @@ export default function CareerCoachPage() {
 
         {/* Right Column: Required Skills & Skill Gap Breakdown (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          {/* Skill Gap Analysis Card */}
+          {/* Skill Matrix Card */}
           <div className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-5">
             <div>
               <h3 className="font-bold text-base text-slate-900 dark:text-white flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-purple-600" />
-                Skill Gap Analysis: Required vs Verified
+                Skill Alignment: Track Expectations vs Verified Proof
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Identifies missing high-impact competencies needed for shortlisted placement drives
+                Competencies expected by recruiters for {currentRole.role}
               </p>
             </div>
 
@@ -331,7 +398,7 @@ export default function CareerCoachPage() {
               </span>
               <div className="flex flex-wrap gap-2">
                 {currentRole.coreLanguages.map((lang) => {
-                  const hasSkill = userVerifiedSkills.includes(lang);
+                  const hasSkill = userVerifiedSkills.some((s) => s.toLowerCase().includes(lang.toLowerCase()));
                   return (
                     <span
                       key={lang}
@@ -359,7 +426,7 @@ export default function CareerCoachPage() {
               </span>
               <div className="flex flex-wrap gap-2">
                 {currentRole.frameworks.map((fw) => {
-                  const hasSkill = userVerifiedSkills.includes(fw);
+                  const hasSkill = userVerifiedSkills.some((s) => s.toLowerCase().includes(fw.toLowerCase()));
                   return (
                     <span
                       key={fw}

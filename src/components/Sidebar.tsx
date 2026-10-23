@@ -30,6 +30,7 @@ import {
   Code2,
   Award,
   BookOpen,
+  Target,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -226,6 +227,22 @@ export default function Sidebar({
                   >
                     <BrainCircuit className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                     <span>AI Career Coach</span>
+                  </Link>
+
+                  <Link
+                    href="/student/skill-gap"
+                    onClick={onClose}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      pathname.startsWith('/student/skill-gap')
+                        ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                        : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                    }`}
+                  >
+                    <Target className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                    <span className="flex-1">AI Skill Gap Analyzer</span>
+                    <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                      Audit
+                    </span>
                   </Link>
 
                   <Link

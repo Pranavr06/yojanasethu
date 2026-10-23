@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Code2,
   CheckCircle2,
@@ -25,6 +26,8 @@ import {
   Edit3,
   ShieldCheck,
   ArrowUpRight,
+  ArrowRight,
+  TrendingDown,
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -47,8 +50,9 @@ import {
   DsaWeeklyTask,
   STANDARD_DSA_TOPICS,
 } from '@/types/dsa';
+import { StudentDsaProgress, DsaPatternMetrics } from '@/types';
 
-// 20 Curated Algorithmic Patterns (Retained & Integrated)
+// 20 Curated Algorithmic Patterns (Retained & Integrated with Skill Gap Engine)
 interface CuratedPattern {
   id: string;
   category: string;
@@ -119,6 +123,11 @@ export default function DSATrackerPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
 
+  // Origin/main Pattern Practice records & Skill Gap metrics
+  const [recordsMap, setRecordsMap] = useState<Record<string, StudentDsaProgress>>({});
+  const [patternMetrics, setPatternMetrics] = useState<DsaPatternMetrics | null>(null);
+  const [isPatternSyncing, setIsPatternSyncing] = useState<string | null>(null);
+
   // Modals
   const [isAddPlatformOpen, setIsAddPlatformOpen] = useState(false);
   const [isManualEditOpen, setIsManualEditOpen] = useState(false);
@@ -152,13 +161,15 @@ export default function DSATrackerPage() {
     setMounted(true);
   }, []);
 
-  // Fetch all DSA Data
+  // Fetch all DSA Data (profiles, stats, reports + server-synced pattern metrics)
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch(`/api/student/dsa/profiles?student_id=${encodeURIComponent(studentId)}`);
-      if (res.ok) {
-        const data = await res.json();
+
+      // 1. Fetch multi-platform profiles, stats, weekly plan & latest report
+      const profRes = await fetch(`/api/student/dsa/profiles?student_id=${encodeURIComponent(studentId)}`);
+      if (profRes.ok) {
+        const data = await profRes.json();
         setProfiles(data.profiles || []);
         setStats(data.stats || []);
         setAggregated(data.aggregated || null);
@@ -166,11 +177,39 @@ export default function DSATrackerPage() {
         setLatestReport(data.latestReport || null);
       }
 
-      // Fetch reports history
+      // 2. Fetch AI reports history
       const histRes = await fetch(`/api/student/dsa/analyze?student_id=${encodeURIComponent(studentId)}`);
       if (histRes.ok) {
         const histData = await histRes.json();
         setReportsHistory(histData.reports || []);
+      }
+
+      // 3. Fetch pattern practice records & Skill Gap metrics from origin/main API
+      const patternRes = await fetch(`/api/student/dsa?student_id=${encodeURIComponent(studentId)}`);
+      if (patternRes.ok) {
+        const patternData = await patternRes.json();
+        if (patternData.records && Array.isArray(patternData.records)) {
+          const rMap: Record<string, StudentDsaProgress> = {};
+          const solved: string[] = [];
+
+          patternData.records.forEach((r: StudentDsaProgress) => {
+            rMap[r.topic_id] = r;
+            if (r.status === 'solved') {
+              solved.push(r.topic_id);
+            }
+          });
+
+          setRecordsMap(rMap);
+          if (solved.length > 0) {
+            setSolvedPatternIds(solved);
+            try {
+              localStorage.setItem('yojanasethu_dsa_solved', JSON.stringify(solved));
+            } catch {}
+          }
+          if (patternData.patternMetrics) {
+            setPatternMetrics(patternData.patternMetrics);
+          }
+        }
       }
     } catch (err) {
       console.error('Error fetching DSA tracker data:', err);
@@ -183,28 +222,118 @@ export default function DSATrackerPage() {
     fetchData();
   }, [fetchData]);
 
-  // Load Curated Pattern Checkbox state from localStorage
+  // Load starter/fallback pattern solved IDs from localStorage if not already loaded from server
   useEffect(() => {
     try {
       const saved = localStorage.getItem('yojanasethu_dsa_solved');
       if (saved) {
-        setSolvedPatternIds(JSON.parse(saved));
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setSolvedPatternIds((prev) => (prev.length === 0 ? parsed : prev));
+        }
       } else {
-        setSolvedPatternIds(['dsa-1', 'dsa-2', 'dsa-6', 'dsa-8', 'dsa-10', 'dsa-13', 'dsa-19']);
+        setSolvedPatternIds((prev) =>
+          prev.length === 0 ? ['dsa-1', 'dsa-2', 'dsa-6', 'dsa-8', 'dsa-10', 'dsa-13', 'dsa-19'] : prev
+        );
       }
     } catch (e) {
       console.error(e);
     }
   }, []);
 
-  const togglePatternSolved = (id: string) => {
-    const updated = solvedPatternIds.includes(id)
+  // Toggle pattern completed status with backend sync + localStorage
+  const togglePatternSolved = async (id: string) => {
+    const isCurrentlySolved = solvedPatternIds.includes(id);
+    const newStatus = isCurrentlySolved ? 'attempted' : 'solved';
+    const updated = isCurrentlySolved
       ? solvedPatternIds.filter((x) => x !== id)
       : [...solvedPatternIds, id];
+
     setSolvedPatternIds(updated);
     try {
       localStorage.setItem('yojanasethu_dsa_solved', JSON.stringify(updated));
-    } catch (e) {}
+    } catch {}
+
+    setIsPatternSyncing(id);
+    try {
+      const currentRecord = recordsMap[id];
+      const attempts = (currentRecord?.attempts_count || 0) + 1;
+      const failed = isCurrentlySolved
+        ? (currentRecord?.failed_attempts || 0) + 1
+        : Math.max(0, currentRecord?.failed_attempts || 0);
+
+      const res = await fetch('/api/student/dsa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic_id: id,
+          status: newStatus,
+          attempts_count: attempts,
+          failed_attempts: failed,
+          student_id: studentId,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.record) {
+          setRecordsMap((prev) => ({ ...prev, [id]: data.record }));
+        }
+        if (data.patternMetrics) {
+          setPatternMetrics(data.patternMetrics);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to sync pattern progress to server:', e);
+    } finally {
+      setIsPatternSyncing(null);
+    }
+  };
+
+  // Record a failed submission attempt (retry practice from origin/main)
+  const recordPracticeAttempt = async (id: string, wasFailed: boolean) => {
+    setIsPatternSyncing(id);
+    try {
+      const currentRecord = recordsMap[id];
+      const attempts = (currentRecord?.attempts_count || 1) + 1;
+      const failed = wasFailed
+        ? (currentRecord?.failed_attempts || 0) + 1
+        : currentRecord?.failed_attempts || 0;
+      const status = wasFailed ? 'attempted' : (currentRecord?.status || 'solved');
+
+      const res = await fetch('/api/student/dsa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic_id: id,
+          status,
+          attempts_count: attempts,
+          failed_attempts: failed,
+          student_id: studentId,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.record) {
+          setRecordsMap((prev) => ({ ...prev, [id]: data.record }));
+        }
+        if (data.patternMetrics) {
+          setPatternMetrics(data.patternMetrics);
+        }
+        if (status === 'solved' && !solvedPatternIds.includes(id)) {
+          const updated = [...solvedPatternIds, id];
+          setSolvedPatternIds(updated);
+          try {
+            localStorage.setItem('yojanasethu_dsa_solved', JSON.stringify(updated));
+          } catch {}
+        }
+      }
+    } catch (e) {
+      console.error('Failed to log attempt:', e);
+    } finally {
+      setIsPatternSyncing(null);
+    }
   };
 
   // Add Platform Handler
@@ -329,7 +458,7 @@ export default function DSATrackerPage() {
     }
   };
 
-  // Trigger AI DSA Analysis
+  // Trigger Gemini AI DSA Analysis
   const handleRunAiAnalysis = async () => {
     try {
       setAnalyzing(true);
@@ -457,11 +586,20 @@ export default function DSATrackerPage() {
         </div>
 
         {/* Global Action Buttons */}
-        <div className="flex items-center gap-3 shrink-0 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0 self-start md:self-auto">
+          <Link
+            href="/student/skill-gap"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 hover:bg-purple-100 text-xs font-bold transition-all shadow-sm"
+          >
+            <BrainCircuit className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <span>Analyze Skill Gap</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+
           <button
             type="button"
             onClick={() => setIsAddPlatformOpen(true)}
-            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
           >
             <Plus className="w-4 h-4 text-indigo-500" />
             <span>Connect Platform</span>
@@ -471,7 +609,7 @@ export default function DSATrackerPage() {
             type="button"
             onClick={handleRunAiAnalysis}
             disabled={analyzing}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-extrabold shadow-md shadow-indigo-500/20 transition-all active:scale-95 disabled:opacity-60"
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white text-xs font-extrabold shadow-md shadow-indigo-500/20 transition-all active:scale-95 disabled:opacity-60"
           >
             {analyzing ? (
               <>
@@ -1123,7 +1261,7 @@ export default function DSATrackerPage() {
           </div>
         </>
       ) : (
-        /* Curated 20 Patterns Tab (Preserved & Enhanced) */
+        /* Curated 20 Patterns Tab (Preserved & Integrated with Skill Gap Engine) */
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800">
             <div>
@@ -1131,7 +1269,7 @@ export default function DSATrackerPage() {
                 Core Algorithmic Interview Patterns (20 High-Frequency Patterns)
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Curated patterns asked in campus hiring rounds at Google, Amazon, Microsoft, and Infosys SP.
+                Curated patterns asked in campus hiring rounds at Google, Amazon, Microsoft, and Infosys SP. Synced with your Skill Gap Engine.
               </p>
             </div>
 
@@ -1141,6 +1279,21 @@ export default function DSATrackerPage() {
               </span>
             </div>
           </div>
+
+          {/* High Failure / Weakness Alert (if detected by Skill Gap Engine from origin/main) */}
+          {patternMetrics && patternMetrics.weak_categories && patternMetrics.weak_categories.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 p-4 text-xs flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <h4 className="font-bold text-amber-900 dark:text-amber-200">
+                  Algorithmic Weakness Flagged: High Failure Rate Detected
+                </h4>
+                <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+                  Your average failure rate in <strong>{patternMetrics.weak_categories.map((w) => w.category).join(', ')}</strong> exceeds the placement benchmark (accuracy {patternMetrics.overall_accuracy}%). Prioritize revisiting these patterns before campus screening rounds.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Search & Difficulty Filter */}
           <div className="flex flex-col sm:flex-row gap-3">
@@ -1186,6 +1339,9 @@ export default function DSATrackerPage() {
           <div className="space-y-2.5">
             {filteredPatterns.map((item) => {
               const isDone = solvedPatternIds.includes(item.id);
+              const record = recordsMap[item.id];
+              const isCurrentSyncing = isPatternSyncing === item.id;
+
               return (
                 <div
                   key={item.id}
@@ -1199,13 +1355,17 @@ export default function DSATrackerPage() {
                   <div className="flex items-start sm:items-center gap-3 min-w-0">
                     <button
                       type="button"
+                      disabled={isCurrentSyncing}
                       onClick={(e) => {
                         e.stopPropagation();
                         togglePatternSolved(item.id);
                       }}
                       className="mt-0.5 sm:mt-0 text-slate-400 hover:text-indigo-600 transition-colors shrink-0"
+                      aria-label={isDone ? 'Mark uncompleted' : 'Mark completed'}
                     >
-                      {isDone ? (
+                      {isCurrentSyncing ? (
+                        <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin" />
+                      ) : isDone ? (
                         <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                       ) : (
                         <Circle className="w-5 h-5" />
@@ -1249,12 +1409,43 @@ export default function DSATrackerPage() {
                           Asked in: <span className="text-indigo-600 dark:text-indigo-400 font-medium">{item.targetCompany}</span>
                         </span>
                       </div>
+
+                      {/* Practice Accuracy & Attempts Details from origin/main */}
+                      {record && (
+                        <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
+                          <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-medium">
+                            Attempts: {record.attempts_count}
+                          </span>
+                          {record.failed_attempts > 0 && (
+                            <span className="px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold">
+                              Failed: {record.failed_attempts}
+                            </span>
+                          )}
+                          <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold">
+                            Accuracy: {record.accuracy_percentage}%
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="self-end sm:self-auto shrink-0">
+                  {/* Actions & Retry Logger from origin/main */}
+                  <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                    <button
+                      type="button"
+                      title="Log a failed submission (practice retry)"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        recordPracticeAttempt(item.id, true);
+                      }}
+                      className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-400 hover:text-rose-600 text-xs font-semibold flex items-center gap-1 transition-colors"
+                    >
+                      <TrendingDown className="w-3.5 h-3.5" />
+                      <span className="hidden md:inline">Failed Attempt</span>
+                    </button>
+
                     <span
-                      className={`text-xs font-bold px-3 py-1 rounded-xl border ${
+                      className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${
                         isDone
                           ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30'
                           : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
