@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState } from 'react';
@@ -20,19 +19,30 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+interface AppShellProps {
+  children: React.ReactNode;
+  title?: string;
+  subtitle?: string;
+}
+
+export function AppShell({ children, title, subtitle }: AppShellProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const isLoginPage = pathname === '/login';
-  const isStudentDashboard = pathname === '/student';
+  const isAuthPage =
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password' ||
+    pathname.startsWith('/auth/');
+  const isStudentDashboard = pathname === '/student' || pathname.startsWith('/student');
 
-  if (isLoginPage || isStudentDashboard) {
+  if (isAuthPage || isStudentDashboard) {
     return (
-      <main className="min-h-screen w-full bg-slate-50 text-slate-900">
+      <main className="min-h-screen w-full bg-slate-50 text-slate-900 dark:bg-[#070B14] dark:text-slate-100">
         {children}
       </main>
     );
@@ -58,34 +68,47 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Menu className="h-5 w-5" />
             </button>
 
-            <span className="inline-flex flex-wrap items-center gap-2 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-400">
-              {role === 'student' ? (
-                <>
-                  <GraduationCap className="h-4 w-4" />
-                  STUDENT CAREER DESK
-                </>
-              ) : role === 'faculty' ? (
-                <>
-                  <Building2 className="h-4 w-4" />
-                  FACULTY MENTOR DESK
-                </>
-              ) : role === 'placement' ? (
-                <>
-                  <Building2 className="h-4 w-4" />
-                  TRAINING & PLACEMENT
-                </>
-              ) : (
-                <>
-                  <Briefcase className="h-4 w-4" />
-                  RECRUITER TALENT DESK
-                </>
-              )}
-            </span>
+            {/* Top Desk Pill Badge */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 shadow-sm">
+                {role === 'admin' ? (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>SYSTEM GOVERNANCE DESK</span>
+                    <span className="text-slate-400 font-normal hidden sm:inline">• Administrative Control</span>
+                  </>
+                ) : role === 'student' ? (
+                  <>
+                    <GraduationCap className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>STUDENT CAREER DESK</span>
+                    <span className="text-slate-400 font-normal hidden sm:inline">• NMAM Institute of Technology</span>
+                  </>
+                ) : role === 'faculty' || role === 'mentor' ? (
+                  <>
+                    <Building2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>FACULTY MENTOR DESK</span>
+                    <span className="text-slate-400 font-normal hidden sm:inline">• Academic Oversight</span>
+                  </>
+                ) : role === 'placement' || role === 'placements' ? (
+                  <>
+                    <Building2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>TRAINING & PLACEMENT (TPO)</span>
+                    <span className="text-slate-400 font-normal hidden sm:inline">• Corporate Relations</span>
+                  </>
+                ) : (
+                  <>
+                    <Briefcase className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>RECRUITER TALENT DESK</span>
+                    <span className="text-slate-400 font-normal hidden sm:inline">• NexusAI Placement Intelligence</span>
+                  </>
+                )}
+              </span>
 
-            <span className="hidden items-center gap-1 text-xs text-emerald-600 md:inline-flex">
-              <Radio className="h-3 w-3" />
-              Contineo Verified
-            </span>
+              <span className="hidden items-center gap-1 text-xs text-emerald-600 md:inline-flex">
+                <Radio className="h-3 w-3" />
+                Contineo Verified
+              </span>
+            </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -154,3 +177,5 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+export default AppShell;

@@ -90,7 +90,7 @@ export default function Sidebar({
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="font-extrabold text-base tracking-tight text-slate-900 dark:text-white">
-                  PATHPILOT
+                  YOJANASETHU
                 </span>
                 <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-500/30">
                   NMAMIT / 2026
@@ -122,17 +122,19 @@ export default function Sidebar({
             <div className="space-y-1">
               <Link
                 href={
-                  role === 'student'
+                  role === 'admin'
+                    ? '/admin/dashboard'
+                    : role === 'student'
                     ? '/student'
-                    : role === 'faculty'
+                    : role === 'faculty' || role === 'mentor'
                     ? '/mentor'
-                    : role === 'placement'
+                    : role === 'placement' || role === 'placements'
                     ? '/placement'
                     : '/recruiter'
                 }
                 onClick={onClose}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                  pathname === '/student' || pathname === '/mentor' || pathname === '/college' || pathname === '/placement' || pathname === '/recruiter'
+                  pathname === '/student' || pathname === '/student/dashboard' || pathname === '/mentor' || pathname === '/mentor/dashboard' || pathname === '/college' || pathname === '/placement' || pathname === '/placements' || pathname === '/placements/dashboard' || pathname === '/recruiter' || pathname === '/recruiter/dashboard' || pathname === '/admin' || pathname === '/admin/dashboard'
                     ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
                     : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
                 }`}
@@ -205,7 +207,7 @@ export default function Sidebar({
             </div>
           )}
 
-          {role === 'faculty' && (
+          {(role === 'faculty' || role === 'mentor') && (
             <div>
               <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
                 MENTOR DESK
@@ -302,7 +304,7 @@ export default function Sidebar({
             </div>
           )}
 
-          {role === 'placement' && (
+          {(role === 'placement' || role === 'placements') && (
             <div>
               <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
                 PLACEMENT CELL (TPO)
@@ -334,6 +336,28 @@ export default function Sidebar({
                   <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
                   <span>Student Offer Tracking</span>
                 </a>
+              </div>
+            </div>
+          )}
+
+          {(role === 'admin' || user?.role === 'admin') && (
+            <div>
+              <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
+                ADMINISTRATION & GOVERNANCE
+              </span>
+              <div className="space-y-1">
+                <Link
+                  href="/admin/dashboard"
+                  onClick={onClose}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname.startsWith('/admin')
+                      ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
+                >
+                  <ShieldCheck className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                  <span>Role Approvals & Directory</span>
+                </Link>
               </div>
             </div>
           )}

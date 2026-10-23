@@ -1,31 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { dbGetProfileByEmail } from '@/lib/db';
+import { createClient } from '@/lib/supabase/client';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { email, password } = body;
 
-    if (!email) {
-      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    if (!email || !password) {
+      return NextResponse.json({ error: 'Email and password are required' }, { status: 400 });
     }
 
-    const profile = await dbGetProfileByEmail(email);
-    if (!profile) {
-      return NextResponse.json(
-        { error: 'No account found with this email in the college registry.' },
-        { status: 401 }
-      );
-    }
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
 
-    // Default password for seeded users is 'password123'
-    if (password && password !== 'password123') {
-      return NextResponse.json({ error: 'Incorrect password.' }, { status: 401 });
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 401 });
     }
 
     return NextResponse.json({
       success: true,
-      user: profile,
+      user: data.user,
+      session: data.session,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message || 'Authentication error' }, { status: 500 });
