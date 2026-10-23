@@ -160,28 +160,37 @@ export async function dbGetFullStudent(studentIdOrUsn: string): Promise<FullStud
 /**
  * Fetch all students from database
  */
+
 export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
     const { data: studentProfiles, error } = await supabase
       .from('profiles')
-      .select('*, departments(code, name)')
+      .select('id')
       .eq('role', 'student');
 
-    if (error || !studentProfiles || studentProfiles.length === 0) return [];
-
-    const fullList: FullStudentProfile[] = [];
-    for (const sp of studentProfiles) {
-      const full = await dbGetFullStudent(sp.id);
-      if (full) fullList.push(full);
+    if (error) {
+      console.error('dbGetAllStudents error:', error);
+      throw error;
     }
-    return fullList;
+
+    if (!studentProfiles || studentProfiles.length === 0) return [];
+
+    // Fetch student profiles concurrently instead of sequentially.
+    const results = await Promise.all(
+      studentProfiles.map((student) => dbGetFullStudent(student.id))
+    );
+
+    return results.filter(
+      (student): student is FullStudentProfile => student !== null
+    );
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
-    return [];
+    throw err;
   }
 }
+
 
 /**
  * Student submits project or certificate evidence into 'evidence_submissions' table
