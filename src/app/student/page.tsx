@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/authContext';
 import {
@@ -33,6 +33,33 @@ export default function StudentDashboard() {
   const { user } = useAuth();
   const [studentName, setStudentName] = useState(user?.full_name || 'Pranav R');
   const [usn, setUsn] = useState(user?.usn || '4NM22CS120');
+  const [dsaSolved, setDsaSolved] = useState<number | null>(null);
+  const [readinessScore, setReadinessScore] = useState<number | null>(null);
+  const [targetRole, setTargetRole] = useState<string>('Software Developer');
+
+  useEffect(() => {
+    async function fetchStats() {
+      try {
+        const dsaRes = await fetch('/api/student/dsa');
+        if (dsaRes.ok) {
+          const dsaData = await dsaRes.json();
+          if (dsaData.records && Array.isArray(dsaData.records)) {
+            const solved = dsaData.records.filter((r: any) => r.status === 'solved').length;
+            setDsaSolved(solved);
+          }
+        }
+        const gapRes = await fetch('/api/student/skill-gap');
+        if (gapRes.ok) {
+          const gapData = await gapRes.json();
+          if (gapData.analysis) {
+            setReadinessScore(gapData.analysis.role_readiness_score);
+            setTargetRole(gapData.analysis.target_role);
+          }
+        }
+      } catch {}
+    }
+    fetchStats();
+  }, []);
 
   const skills = [
     { name: 'Python & AI Engineering', level: 85 },
@@ -146,9 +173,9 @@ export default function StudentDashboard() {
             <span>Placement Readiness</span>
             <Target className="w-4 h-4 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
           </div>
-          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">84%</p>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{readinessScore !== null ? `${readinessScore}%` : '—'}</p>
           <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
-            Super Dream Role Target
+            {targetRole}
           </p>
         </Link>
 
@@ -160,8 +187,8 @@ export default function StudentDashboard() {
             <span>DSA Patterns Solved</span>
             <Code2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
           </div>
-          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">14 / 20</p>
-          <p className="mt-1 text-[11px] text-slate-400">70% Pattern Mastery</p>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">{dsaSolved !== null ? `${dsaSolved} / 20` : '— / 20'}</p>
+          <p className="mt-1 text-[11px] text-slate-400">{dsaSolved !== null ? `${Math.round((dsaSolved / 20) * 100)}% Pattern Mastery` : 'Pattern mastery'}</p>
         </Link>
 
         <Link
