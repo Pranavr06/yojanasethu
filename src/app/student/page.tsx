@@ -73,10 +73,6 @@ export default function StudentDashboard() {
       {/* Hero Welcome Banner */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-violet-700 p-6 sm:p-10 text-white shadow-xl">
         <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md border border-white/20">
-            <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Autonomous Contineo ERP Connected · NMAMIT 2026</span>
-          </div>
 
           <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
             Welcome back, {user?.full_name || studentName}!

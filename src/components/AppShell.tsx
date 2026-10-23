@@ -103,11 +103,6 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
                   </>
                 )}
               </span>
-
-              <span className="hidden items-center gap-1 text-xs text-emerald-600 md:inline-flex">
-                <Radio className="h-3 w-3" />
-                Contineo Verified
-              </span>
             </div>
           </div>
 
@@ -146,13 +141,7 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
                       <p className="truncate text-sm font-bold">{user.full_name}</p>
                       <p className="truncate text-xs text-slate-500">{user.email}</p>
 
-                      <Link
-                        href="/login"
-                        onClick={() => setProfileOpen(false)}
-                        className="mt-3 block rounded-lg p-2 text-sm hover:bg-slate-100 dark:hover:bg-slate-800"
-                      >
-                        Switch Persona
-                      </Link>
+                      <hr className="my-2 border-slate-100 dark:border-slate-800" />
 
                       <button
                         onClick={() => {

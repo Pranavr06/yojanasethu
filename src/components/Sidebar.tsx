@@ -507,49 +507,42 @@ export default function Sidebar({
           )}
 
           {/* SECTION 3: INTELLIGENCE ACTIONS */}
-          <div>
-            <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
-              ACTIONS & AUDIT
-            </span>
-            <div className="space-y-1">
-              {role === 'student' && onOpenEvidenceModal && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onOpenEvidenceModal();
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-100 dark:hover:bg-slate-900 text-left transition-colors"
-                >
-                  <UploadCloud className="w-4 h-4 text-indigo-500" />
-                  <span>Submit Proof for Review</span>
-                </button>
-              )}
+          {(onOpenEvidenceModal || onOpenResumeModal) && (
+            <div>
+              <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-2">
+                ACTIONS & AUDIT
+              </span>
+              <div className="space-y-1">
+                {role === 'student' && onOpenEvidenceModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenEvidenceModal();
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-100 dark:hover:bg-slate-900 text-left transition-colors"
+                  >
+                    <UploadCloud className="w-4 h-4 text-indigo-500" />
+                    <span>Submit Proof for Review</span>
+                  </button>
+                )}
 
-              {role === 'student' && onOpenResumeModal && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onOpenResumeModal();
-                  }}
-                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 hover:bg-slate-100 dark:hover:bg-slate-900 text-left transition-colors"
-                >
-                  <FileSearch className="w-4 h-4 text-purple-500" />
-                  <span>AI Resume & Gap Parser</span>
-                </button>
-              )}
-
-              <Link
-                href="/login"
-                onClick={onClose}
-                className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
-              >
-                <Database className="w-4 h-4 text-slate-500 dark:text-slate-400" />
-                <span>Switch Evaluator Persona</span>
-              </Link>
+                {role === 'student' && onOpenResumeModal && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenResumeModal();
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-300 hover:bg-slate-100 dark:hover:bg-slate-900 text-left transition-colors"
+                  >
+                    <FileSearch className="w-4 h-4 text-purple-500" />
+                    <span>AI Resume & Gap Parser</span>
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* Bottom Section: Live Gateway & User Profile Card */}
