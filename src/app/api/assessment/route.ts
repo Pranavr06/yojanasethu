@@ -10,8 +10,9 @@ import {
 import {
   dbSaveCertificateAssessment,
   dbGetAssessmentForSubmission,
+  dbGetSubmissionById,
 } from '@/lib/db';
-import { createClient } from '@/lib/supabase/server';
+import { validateStudentSession } from '@/lib/serverAuth';
 
 /**
  * GET /api/assessment
@@ -31,34 +32,38 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Retrieve sanitized client questions (NO answer keys, NO explanations)
+    // 1. Sanitize questions: strip correct answers and grading rationales
     const questions = getSubjectQuestionsForClient(subject);
 
-    let latestAssessment = null;
+    // 2. If submission_id provided, include prior assessment history if any
+    let priorAssessment = null;
     if (submissionId) {
-      latestAssessment = await dbGetAssessmentForSubmission(submissionId);
+      priorAssessment = await dbGetAssessmentForSubmission(submissionId);
     }
 
     return NextResponse.json({
       subject,
-      subject_label: SUBJECT_METADATA[subject].label,
-      description: SUBJECT_METADATA[subject].description,
-      total_questions: questions.length,
-      passing_score_threshold: 60.0,
+      metadata: SUBJECT_METADATA[subject],
+      totalQuestions: questions.length,
       questions,
-      latest_assessment: latestAssessment,
-      notice: 'Practice skill verification assessment. Official endorsement requires faculty mentor review.',
+      priorAssessment,
+      instructions: [
+        'Each assessment contains 5 subject-specific questions with a 10-minute timer.',
+        'Deterministic automated scoring will evaluate your responses upon submission.',
+        'A score of 60% or higher is recommended for faculty mentor verification approval.',
+        'Exactly one mentor-authorized retake attempt is granted if needed.',
+      ],
     });
   } catch (error: any) {
     console.error('GET /api/assessment error:', error);
-    return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error while loading assessment' }, { status: 500 });
   }
 }
 
 /**
  * POST /api/assessment
- * Submits student answers, calculates percentage score on the server,
- * strictly enforces max 2 attempts (initial + 1 mentor retake), and saves to database.
+ * Deterministically grades and persists the student exam attempt.
+ * Enforces strict authentication, student identity verification, and submission ownership.
  */
 export async function POST(request: NextRequest) {
   try {
@@ -89,20 +94,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Resolve authenticated student ID if available
-    let resolvedStudentId = student_id;
-    if (!resolvedStudentId || !resolvedStudentId.includes('-')) {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user?.id) {
-        resolvedStudentId = user.id;
-      } else {
-        // Fallback default student profile UUID
-        resolvedStudentId = '11111111-1111-1111-1111-111111111111';
-      }
+    // 1. Strict Session Authentication & Identity Enforcement
+    const authResult = await validateStudentSession(request, student_id);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Authentication required to complete assessments.' },
+        { status: authResult.status || 401 }
+      );
     }
 
-    // Server-side scoring and persistence
+    const resolvedStudentId = authResult.studentId;
+
+    // 2. Submission ownership verification: ensure student owns this submission
+    const sub = await dbGetSubmissionById(submission_id);
+    if (sub && sub.student_id !== resolvedStudentId) {
+      return NextResponse.json(
+        { error: 'Forbidden: You cannot take an assessment for a certificate belonging to another student.' },
+        { status: 403 }
+      );
+    }
+
+    // 3. Server-side scoring and persistence
     const result = await dbSaveCertificateAssessment({
       submission_id,
       student_id: resolvedStudentId,

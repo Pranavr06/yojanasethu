@@ -29,6 +29,7 @@ import {
   gradeAssessmentSubmission,
   SUBJECT_METADATA,
 } from './assessmentQuestions';
+import { ALL_COHORT_PROFILES } from './cohortData';
 import { createClient } from '@supabase/supabase-js';
 
 // ============================================================================
@@ -202,6 +203,58 @@ export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
 /**
  * Student submits project or certificate evidence into 'evidence_submissions' table
  */
+/**
+ * Resolves any student identifier (UUID, USN, or Email) to an existing Profile UUID in PostgreSQL or seeded cohort.
+ * Does NOT fall back to any hardcoded default student. If the student cannot be mapped to a legitimate profile,
+ * returns null.
+ */
+export async function dbResolveStudentProfileId(studentIdOrIdentifier?: string): Promise<string | null> {
+  if (!studentIdOrIdentifier) return null;
+
+  const raw = studentIdOrIdentifier.trim();
+  if (!raw) return null;
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // 1. If it looks like a UUID and does not have @, check if it actually exists in profiles
+      if (isUuid && !raw.includes('@')) {
+        const { data: exists } = await supabase.from('profiles').select('id').eq('id', raw).maybeSingle();
+        if (exists?.id) return exists.id;
+      }
+
+      // 2. Query profile by email or USN
+      let pQuery = supabase.from('profiles').select('id');
+      if (raw.includes('@')) {
+        pQuery = pQuery.eq('email', raw.toLowerCase());
+      } else {
+        pQuery = pQuery.ilike('usn', raw);
+      }
+
+      const { data: matched } = await pQuery.maybeSingle();
+      if (matched?.id) return matched.id;
+    } catch (err) {
+      console.warn('dbResolveStudentProfileId database lookup error:', err);
+    }
+  }
+
+  // 3. Check seeded cohort profiles (for local dev, demo data, and offline tests)
+  const cohortMatch = ALL_COHORT_PROFILES.find((p) => {
+    if (isUuid && p.id.toLowerCase() === raw.toLowerCase()) return true;
+    if (raw.includes('@') && p.email.toLowerCase() === raw.toLowerCase()) return true;
+    if (p.usn && p.usn.toLowerCase() === raw.toLowerCase()) return true;
+    return false;
+  });
+
+  if (cohortMatch?.id) {
+    return cohortMatch.id;
+  }
+
+  // Never fall back to any default student profile
+  return null;
+}
+
 export async function dbSubmitEvidence(params: {
   student_id: string;
   institution_id?: string;
@@ -210,11 +263,11 @@ export async function dbSubmitEvidence(params: {
   github_repo_url?: string;
   description: string;
   type?: EvidenceType;
+  subject?: string;
+  issuer_or_organization?: string;
   document_storage_path?: string;
   credential_url?: string;
 }): Promise<EvidenceSubmission | null> {
-  if (!isSupabaseConfigured || !supabase) return null;
-
   const {
     student_id,
     institution_id = INSTITUTION_ID,
@@ -222,22 +275,54 @@ export async function dbSubmitEvidence(params: {
     skill_name,
     github_repo_url,
     description,
-    type = 'github_repo',
+    type = 'certificate',
+    subject,
+    issuer_or_organization,
     document_storage_path,
     credential_url,
   } = params;
+
+  // Resolve student_id to an authenticated database profile UUID
+  const resolvedStudentId = await dbResolveStudentProfileId(student_id);
+  if (!resolvedStudentId) {
+    console.error(`[dbSubmitEvidence] Rejected: student identifier "${student_id}" cannot be resolved to any legitimate student profile.`);
+    return null;
+  }
+
+  if (!isSupabaseConfigured || !supabase) {
+    const demoSubmission: EvidenceSubmission = {
+      id: `sub-${Date.now()}`,
+      institution_id,
+      student_id: resolvedStudentId,
+      title,
+      type,
+      description,
+      issue_date: new Date().toISOString().split('T')[0],
+      issuer_or_organization: issuer_or_organization || (type === 'certificate' ? 'Authorized Certifying Authority' : 'GitHub Repository'),
+      technologies: [skill_name],
+      associated_skills: [skill_name],
+      github_repo_url: github_repo_url || null,
+      document_storage_path: document_storage_path || null,
+      credential_url: credential_url || null,
+      team_size: 1,
+      status: 'pending',
+      submitted_at: new Date().toISOString(),
+    };
+    return demoSubmission;
+  }
 
   try {
     const { data, error } = await supabase
       .from('evidence_submissions')
       .insert({
         institution_id,
-        student_id,
+        student_id: resolvedStudentId,
         title,
         type,
+        subject: subject || null,
         description,
         issue_date: new Date().toISOString().split('T')[0],
-        issuer_or_organization: type === 'certificate' ? 'Authorized Certifying Authority' : 'GitHub Repository',
+        issuer_or_organization: issuer_or_organization || (type === 'certificate' ? 'Authorized Certifying Authority' : 'GitHub Repository'),
         technologies: [skill_name],
         associated_skills: [skill_name],
         github_repo_url: github_repo_url || null,
@@ -252,13 +337,13 @@ export async function dbSubmitEvidence(params: {
 
     if (error) {
       console.error('dbSubmitEvidence insert error:', error);
-      return null;
+      throw new Error(error.message || 'Database error during evidence submission');
     }
 
     return data as EvidenceSubmission;
-  } catch (err) {
+  } catch (err: any) {
     console.error('dbSubmitEvidence error:', err);
-    return null;
+    throw err;
   }
 }
 
@@ -1767,6 +1852,26 @@ const memoryRetakeGrants = new Map<string, {
  * Calculates percentage: (correct / total) * 100.
  * Strictly enforces attempts limit (Max 2: Initial + 1 Authorized Retake).
  */
+/**
+ * Fetch a specific evidence submission by its ID
+ */
+export async function dbGetSubmissionById(submissionId: string): Promise<EvidenceSubmission | null> {
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('evidence_submissions')
+        .select('*')
+        .eq('id', submissionId)
+        .maybeSingle();
+
+      if (!error && data) return data as EvidenceSubmission;
+    } catch (e) {
+      // fallback
+    }
+  }
+  return null;
+}
+
 export async function dbSaveCertificateAssessment(params: {
   submission_id: string;
   student_id: string;
@@ -1778,6 +1883,14 @@ export async function dbSaveCertificateAssessment(params: {
   error?: string;
 }> {
   const { submission_id, student_id, subject, submissions } = params;
+  const resolvedStudentId = await dbResolveStudentProfileId(student_id);
+  if (!resolvedStudentId) {
+    return {
+      success: false,
+      assessment: null,
+      error: 'Invalid student identity: student profile not found or unauthorized.',
+    };
+  }
 
   try {
     // 1. Fetch current submission attempt counts
@@ -1789,11 +1902,18 @@ export async function dbSaveCertificateAssessment(params: {
       try {
         const { data: sub } = await supabase
           .from('evidence_submissions')
-          .select('id, attempts_count, max_attempts_allowed, can_retake, status')
+          .select('id, student_id, attempts_count, max_attempts_allowed, can_retake, status')
           .eq('id', submission_id)
           .maybeSingle();
 
         if (sub) {
+          if ((sub as any).student_id !== resolvedStudentId) {
+            return {
+              success: false,
+              assessment: null,
+              error: 'Forbidden: You cannot take an assessment for a certificate belonging to another student.',
+            };
+          }
           currentAttempts = sub.attempts_count || 0;
           maxAllowed = sub.max_attempts_allowed || 1;
           canRetake = sub.can_retake || false;
@@ -1842,7 +1962,7 @@ export async function dbSaveCertificateAssessment(params: {
     const assessmentRecord: CertificateAssessment = {
       id: `eval-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       submission_id,
-      student_id,
+      student_id: resolvedStudentId,
       subject,
       subject_label: SUBJECT_METADATA[subject]?.label || subject,
       score_percentage: graded.score_percentage,
@@ -1891,7 +2011,7 @@ export async function dbSaveCertificateAssessment(params: {
         // Insert certificate_assessments
         await supabase.from('certificate_assessments').insert({
           submission_id,
-          student_id,
+          student_id: resolvedStudentId,
           subject,
           score_percentage: graded.score_percentage,
           total_questions: graded.total_questions,

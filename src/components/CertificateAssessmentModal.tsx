@@ -70,19 +70,30 @@ export default function CertificateAssessmentModal({
     setCurrentIndex(0);
     setTimeLeft(600);
 
-    fetch(`/api/assessment?subject=${encodeURIComponent(subject)}&submission_id=${encodeURIComponent(submissionId)}`)
-      .then((res) => res.json())
+        fetch(`/api/assessment?subject=${encodeURIComponent(subject)}&submission_id=${encodeURIComponent(submissionId)}`)
+      .then(async (res) => {
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch {
+          throw new Error(`Server returned HTTP ${res.status} (${res.statusText})`);
+        }
+        if (!res.ok) {
+          throw new Error(data.error || `Failed to load questions (HTTP ${res.status})`);
+        }
+        return data;
+      })
       .then((data) => {
         if (!isMounted) return;
-        if (data.error) {
-          setErrorMsg(data.error);
-        } else if (data.questions) {
+        if (data.questions) {
           setQuestions(data.questions);
+        } else {
+          setErrorMsg(data.error || 'No questions available for this domain.');
         }
       })
       .catch((err) => {
         if (!isMounted) return;
-        setErrorMsg('Failed to load assessment questions. Please check network connectivity.');
+        setErrorMsg(err.message || 'Failed to load assessment questions. Please check network connectivity.');
       })
       .finally(() => {
         if (isMounted) setLoading(false);
@@ -130,20 +141,31 @@ export default function CertificateAssessmentModal({
         selectedOptionIndex: selectedAnswers[q.id] !== undefined ? selectedAnswers[q.id] : -1,
       }));
 
-      const res = await fetch('/api/assessment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          submission_id: submissionId,
-          student_id: studentId,
-          subject,
-          answers: answersPayload,
-        }),
-      });
+            let res: Response;
+      try {
+        res = await fetch('/api/assessment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            submission_id: submissionId,
+            student_id: studentId,
+            subject,
+            answers: answersPayload,
+          }),
+        });
+      } catch (netErr: any) {
+        throw new Error(`[Network Error] Could not connect to /api/assessment: ${netErr.message || 'Server unreachable'}.`);
+      }
 
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(`[Server Error] Server returned HTTP ${res.status} (${res.statusText}) with invalid format.`);
+      }
+
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to submit assessment answers.');
+        throw new Error(data?.error || `Assessment submission failed with HTTP ${res.status}`);
       }
 
       setResult(data.assessment);
