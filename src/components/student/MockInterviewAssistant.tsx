@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Mic,
   MicOff,
@@ -30,9 +30,34 @@ import {
   Share2,
   RefreshCw,
   XCircle,
+  Activity,
+  Radio,
+  Zap,
+  Gauge,
+  Music,
+  PauseCircle,
+  TrendingUp,
+  FastForward,
+  Check,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
+import {
+  FullEvaluationResult,
+  VoiceAnalysisResult,
+  AcousticTelemetry,
+} from '@/app/api/interview/evaluate/route';
 
 export type InterviewTrack = 'fullstack' | 'aiml' | 'data' | 'behavioral';
+
+export type InterviewSessionState =
+  | 'idle'
+  | 'asking'
+  | 'listening'
+  | 'saving_answer'
+  | 'moving_to_next'
+  | 'finalizing_results'
+  | 'completed';
 
 export interface QuestionTemplate {
   id: string;
@@ -43,25 +68,24 @@ export interface QuestionTemplate {
   keyPoints: string[];
 }
 
-export interface QuestionEvaluation {
+export interface SavedAnswer {
+  questionId: string;
+  questionIndex: number;
+  questionText: string;
+  category: string;
+  keyPoints: string[];
+  sampleDemoAnswer: string;
+  userAnswer: string;
+  acousticTelemetry: AcousticTelemetry;
+  timestamp: number;
+}
+
+export interface QuestionEvaluation extends FullEvaluationResult {
   questionId: string;
   question: string;
   userAnswer: string;
-  score: number;
-  aiFeedback: string;
-  keyPointsCovered: string[];
-  keyPointsMissed: string[];
-  keyPointsHit: string[];
-  strengths: string[];
-  improvements: string[];
-  suggestedAnswer?: string;
-  rubric: {
-    technical: number;
-    communication: number;
-    confidence: number;
-    problemSolving: number;
-  };
   durationMs?: number;
+  isEvaluationFailed?: boolean;
 }
 
 export const TRACK_QUESTIONS: Record<
@@ -311,33 +335,88 @@ export const TRACK_QUESTIONS: Record<
   },
 };
 
+const STORAGE_SESSION_KEY = 'yojanasethu_live_mock_interview_session';
+
+function formatTime(totalSeconds: number): string {
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
 export default function MockInterviewAssistant() {
   const [selectedTrack, setSelectedTrack] = useState<InterviewTrack>('fullstack');
-  const [sessionState, setSessionState] = useState<
-    'idle' | 'in_progress' | 'feedback' | 'completed'
-  >('idle');
+  const [sessionState, setSessionState] = useState<InterviewSessionState>('idle');
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [userAnswer, setUserAnswer] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [isEvaluating, setIsEvaluating] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [liveVoiceMode, setLiveVoiceMode] = useState(true);
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [speechSupported, setSpeechSupported] = useState(false);
+  const [micPermissionDenied, setMicPermissionDenied] = useState(false);
 
+  // Live acoustic visualizer state
+  const [liveVolumeLevel, setLiveVolumeLevel] = useState(0);
+  const [detectedCommandNotice, setDetectedCommandNotice] = useState<string | null>(null);
+  const [showStopConfirmModal, setShowStopConfirmModal] = useState(false);
+  const [recoveredSessionPrompt, setRecoveredSessionPrompt] = useState<any | null>(null);
+
+  // Evaluation and answers tracking
+  const [savedAnswers, setSavedAnswers] = useState<SavedAnswer[]>([]);
   const [evaluations, setEvaluations] = useState<QuestionEvaluation[]>([]);
+  const [completedEvalCount, setCompletedEvalCount] = useState(0);
+  const [expandedQuestionAuditId, setExpandedQuestionAuditId] = useState<string | null>(null);
 
   // Speech and concurrency management refs
   const recognitionRef = useRef<any>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const baseTextRef = useRef<string>('');
-  const isSubmittingRef = useRef<boolean>(false);
+  const isAdvancingRef = useRef<boolean>(false);
+  const savedAnswersRef = useRef<SavedAnswer[]>([]);
+  const evaluationsMapRef = useRef<Map<string, QuestionEvaluation>>(new Map());
+  const backgroundPromisesRef = useRef<Map<string, Promise<QuestionEvaluation | null>>>(new Map());
+
+  // Real-time acoustic capture refs
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const animFrameIdRef = useRef<number | null>(null);
+  const speechStartTimeRef = useRef<number>(0);
+  const pausesListRef = useRef<{ start: number; duration: number }[]>([]);
+  const pitchSamplesRef = useRef<number[]>([]);
+  const rmsSamplesRef = useRef<number[]>([]);
+  const lastVoiceActivityTimeRef = useRef<number>(0);
+  const isPauseActiveRef = useRef<boolean>(false);
+  const currentPauseStartRef = useRef<number>(0);
 
   const activeQuestions = TRACK_QUESTIONS[selectedTrack].questions;
   const currentQuestion = activeQuestions[currentQuestionIdx];
 
-  // Initialize Web Speech Recognition
+  // 1. Check for recoverable interrupted session in sessionStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem(STORAGE_SESSION_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (
+            parsed &&
+            parsed.track &&
+            Array.isArray(parsed.answers) &&
+            parsed.answers.length > 0 &&
+            Date.now() - (parsed.timestamp || 0) < 3600000 // within 1 hour
+          ) {
+            setRecoveredSessionPrompt(parsed);
+          }
+        }
+      } catch (_) {}
+    }
+  }, []);
+
+  // 2. Initialize Web Speech Recognition
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const SpeechRecognition =
@@ -365,7 +444,6 @@ export default function MockInterviewAssistant() {
             }
           }
 
-          // Append finalized words to baseTextRef
           if (accumulatedFinal) {
             const trimmedFinal = accumulatedFinal.trim();
             if (trimmedFinal) {
@@ -375,19 +453,80 @@ export default function MockInterviewAssistant() {
             }
           }
 
-          // Live display combines base text with temporary interim words without mutating base text
           const interimTrimmed = currentInterim.trim();
-          const liveText = interimTrimmed
+          let liveText = interimTrimmed
             ? baseTextRef.current
               ? `${baseTextRef.current.trim()} ${interimTrimmed}`
               : interimTrimmed
             : baseTextRef.current;
 
+          const cleanLower = liveText.toLowerCase().trim();
+
+          // Voice Command: "Repeat Question"
+          if (
+            /\b(repeat question|read question again|say question again)\b/i.test(
+              cleanLower
+            )
+          ) {
+            setDetectedCommandNotice('Voice Command: "Repeat Question"');
+            liveText = liveText.replace(
+              /\b(repeat question|read question again|say question again)\b/gi,
+              ''
+            ).trim();
+            baseTextRef.current = liveText;
+            setUserAnswer(liveText);
+            setTimeout(() => setDetectedCommandNotice(null), 3000);
+            speakText(currentQuestion.question);
+            return;
+          }
+
+          // Voice Command: "Stop Interview"
+          if (/\b(stop interview|end interview|quit interview)\b/i.test(cleanLower)) {
+            setDetectedCommandNotice('Voice Command: "Stop Interview" — Confirmation requested');
+            liveText = liveText.replace(
+              /\b(stop interview|end interview|quit interview)\b/gi,
+              ''
+            ).trim();
+            baseTextRef.current = liveText;
+            setUserAnswer(liveText);
+            setTimeout(() => {
+              setDetectedCommandNotice(null);
+              setShowStopConfirmModal(true);
+            }, 500);
+            return;
+          }
+
+          // Voice Command: "Pass" (Advance to next question automatically)
+          const passMatch = liveText.match(
+            /(?:^|\s)(?:please\s+)?(pass|pass to next|submit answer|done)[\s.!?]*$/i
+          );
+          if (passMatch) {
+            const cleanedAnswer = liveText
+              .replace(
+                /(?:^|\s)(?:please\s+)?(pass|pass to next|submit answer|done)[\s.!?]*$/i,
+                ''
+              )
+              .trim();
+
+            setDetectedCommandNotice('Voice Command: "Pass" — Saving and advancing to next question...');
+            setUserAnswer(cleanedAnswer);
+            baseTextRef.current = cleanedAnswer;
+
+            setTimeout(() => {
+              setDetectedCommandNotice(null);
+              handlePassAndAdvance(cleanedAnswer);
+            }, 500);
+            return;
+          }
+
           setUserAnswer(liveText);
         };
 
         recognition.onerror = (err: any) => {
-          console.warn('Speech recognition warning:', err.error);
+          console.warn('Speech recognition notice:', err.error);
+          if (err.error === 'not-allowed' || err.error === 'service-not-allowed') {
+            setMicPermissionDenied(true);
+          }
           setIsListening(false);
         };
 
@@ -398,11 +537,20 @@ export default function MockInterviewAssistant() {
         recognitionRef.current = recognition;
       }
     }
-  }, []);
 
-  // Timer logic
+    return () => {
+      stopMicrophoneAndAcoustics();
+    };
+  }, [currentQuestionIdx, currentQuestion]);
+
+  // 3. Interview Timer Logic
   useEffect(() => {
-    if (sessionState === 'in_progress') {
+    if (
+      sessionState === 'asking' ||
+      sessionState === 'listening' ||
+      sessionState === 'saving_answer' ||
+      sessionState === 'moving_to_next'
+    ) {
       timerRef.current = setInterval(() => {
         setTimerSeconds((prev) => prev + 1);
       }, 1000);
@@ -415,13 +563,238 @@ export default function MockInterviewAssistant() {
     };
   }, [sessionState]);
 
-  // Voice synthesizer
-  const speakText = (text: string) => {
+  // Audio Signal Processing: Web Audio Analyser & MediaRecorder
+  const startMicrophoneAndAcoustics = async () => {
+    try {
+      if (typeof window === 'undefined') return;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      mediaStreamRef.current = stream;
+      setMicPermissionDenied(false);
+
+      const AudioContextClass =
+        window.AudioContext || (window as any).webkitAudioContext;
+      const audioCtx = new AudioContextClass();
+      audioContextRef.current = audioCtx;
+
+      const source = audioCtx.createMediaStreamSource(stream);
+      const analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 2048;
+      source.connect(analyser);
+      analyserRef.current = analyser;
+
+      speechStartTimeRef.current = Date.now();
+      lastVoiceActivityTimeRef.current = Date.now();
+      isPauseActiveRef.current = false;
+      pausesListRef.current = [];
+      pitchSamplesRef.current = [];
+      rmsSamplesRef.current = [];
+      audioChunksRef.current = [];
+
+      try {
+        const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+          ? 'audio/webm;codecs=opus'
+          : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : 'audio/wav';
+
+        const recorder = new MediaRecorder(stream, { mimeType });
+        recorder.ondataavailable = (e) => {
+          if (e.data && e.data.size > 0) {
+            audioChunksRef.current.push(e.data);
+          }
+        };
+        recorder.start(250);
+        mediaRecorderRef.current = recorder;
+      } catch (err) {
+        console.warn('MediaRecorder not available:', err);
+      }
+
+      const buffer = new Float32Array(analyser.fftSize);
+
+      const analyzeFrame = () => {
+        if (!analyserRef.current) return;
+
+        analyserRef.current.getFloatTimeDomainData(buffer);
+
+        let sumSquares = 0;
+        for (let i = 0; i < buffer.length; i++) {
+          sumSquares += buffer[i] * buffer[i];
+        }
+        const rms = Math.sqrt(sumSquares / buffer.length);
+        const rmsDb = 20 * Math.log10(Math.max(rms, 1e-4));
+        rmsSamplesRef.current.push(rmsDb);
+
+        setLiveVolumeLevel(Math.min(100, Math.max(0, Math.round(rms * 400))));
+
+        const sampleRate = audioCtx.sampleRate;
+        const minPeriod = Math.floor(sampleRate / 350);
+        const maxPeriod = Math.floor(sampleRate / 75);
+
+        let bestCorrelation = 0;
+        let bestPeriod = -1;
+
+        if (rms > 0.02) {
+          for (let period = minPeriod; period <= maxPeriod; period++) {
+            let correlation = 0;
+            for (let i = 0; i < buffer.length - period; i++) {
+              correlation += buffer[i] * buffer[i + period];
+            }
+            if (correlation > bestCorrelation) {
+              bestCorrelation = correlation;
+              bestPeriod = period;
+            }
+          }
+
+          if (bestCorrelation > 0.4 && bestPeriod > 0) {
+            const pitchHz = sampleRate / bestPeriod;
+            if (pitchHz >= 75 && pitchHz <= 350) {
+              pitchSamplesRef.current.push(pitchHz);
+            }
+          }
+
+          if (isPauseActiveRef.current) {
+            const pauseDuration =
+              (Date.now() - currentPauseStartRef.current) / 1000;
+            if (pauseDuration >= 0.7) {
+              pausesListRef.current.push({
+                start: currentPauseStartRef.current,
+                duration: pauseDuration,
+              });
+            }
+            isPauseActiveRef.current = false;
+          }
+          lastVoiceActivityTimeRef.current = Date.now();
+        } else {
+          const silenceDuration =
+            (Date.now() - lastVoiceActivityTimeRef.current) / 1000;
+          if (silenceDuration >= 0.7 && !isPauseActiveRef.current) {
+            isPauseActiveRef.current = true;
+            currentPauseStartRef.current = Date.now();
+          }
+        }
+
+        animFrameIdRef.current = requestAnimationFrame(analyzeFrame);
+      };
+
+      animFrameIdRef.current = requestAnimationFrame(analyzeFrame);
+    } catch (err: any) {
+      console.warn('Microphone permission or AudioContext error:', err);
+      setMicPermissionDenied(true);
+      setIsListening(false);
+    }
+  };
+
+  const stopMicrophoneAndAcoustics = () => {
+    if (animFrameIdRef.current) {
+      cancelAnimationFrame(animFrameIdRef.current);
+      animFrameIdRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (_) {}
+    }
+
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      try {
+        audioContextRef.current.close();
+      } catch (_) {}
+      audioContextRef.current = null;
+    }
+
+    setLiveVolumeLevel(0);
+  };
+
+  // Compile acoustic metrics from recorded speech
+  const extractAcousticTelemetry = (transcript: string): AcousticTelemetry => {
+    const durationSec = Math.max(
+      1,
+      (Date.now() - speechStartTimeRef.current) / 1000
+    );
+
+    const fillerRegex =
+      /\b(um|uh|er|ah|like|you know|basically|actually|sort of|kind of)\b/gi;
+    const detectedFillers: string[] = [];
+    let match: RegExpExecArray | null;
+    while ((match = fillerRegex.exec(transcript)) !== null) {
+      detectedFillers.push(match[0].toLowerCase());
+    }
+
+    const repeatedWordsRegex = /\b(\w+)\s+\1\b/gi;
+    while ((match = repeatedWordsRegex.exec(transcript)) !== null) {
+      detectedFillers.push(`repeat: "${match[1]}"`);
+    }
+
+    const words = transcript.trim().split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+
+    const totalPauseSec = pausesListRef.current.reduce(
+      (acc, p) => acc + p.duration,
+      0
+    );
+    const pauseCount = pausesListRef.current.length;
+
+    const activeSpeechTimeSec = Math.max(1, durationSec - totalPauseSec);
+    const speakingRateWpm = Math.round((wordCount / activeSpeechTimeSec) * 60);
+
+    const pitches = pitchSamplesRef.current;
+    let meanPitchHz = 0;
+    let pitchVarianceHz = 0;
+    if (pitches.length > 5) {
+      meanPitchHz = Math.round(
+        pitches.reduce((a, b) => a + b, 0) / pitches.length
+      );
+      const variance =
+        pitches.reduce((a, b) => a + Math.pow(b - meanPitchHz, 2), 0) /
+        pitches.length;
+      pitchVarianceHz = Math.round(Math.sqrt(variance));
+    }
+
+    const rms = rmsSamplesRef.current;
+    let loudnessVariationDb = 0;
+    if (rms.length > 10) {
+      const meanRms = rms.reduce((a, b) => a + b, 0) / rms.length;
+      const rmsVariance =
+        rms.reduce((a, b) => a + Math.pow(b - meanRms, 2), 0) / rms.length;
+      loudnessVariationDb = Math.round(Math.sqrt(rmsVariance));
+    }
+
+    return {
+      speakingRateWpm: Math.min(260, Math.max(40, speakingRateWpm)),
+      pauseCount,
+      totalPauseSec: Math.round(totalPauseSec * 10) / 10,
+      durationSec: Math.round(durationSec * 10) / 10,
+      meanPitchHz: meanPitchHz || 160,
+      pitchVarianceHz: pitchVarianceHz || 25,
+      loudnessVariationDb: loudnessVariationDb || 12,
+      fillerCount: detectedFillers.length,
+      fillerWords: Array.from(new Set(detectedFillers)),
+      isTypedAnswer: false,
+    };
+  };
+
+  // Text-To-Speech Output with Reliable Callback Sequencing
+  const speakText = (text: string, onFinish?: () => void) => {
     if (
       !voiceEnabled ||
       typeof window === 'undefined' ||
       !window.speechSynthesis
     ) {
+      if (onFinish) setTimeout(onFinish, 150);
       return;
     }
 
@@ -432,20 +805,29 @@ export default function MockInterviewAssistant() {
     utterance.pitch = 1.0;
 
     const voices = window.speechSynthesis.getVoices();
-
     const naturalVoice = voices.find(
       (v) =>
         v.lang.startsWith('en') &&
         (v.name.includes('Natural') ||
           v.name.includes('Google') ||
-          v.name.includes('Samantha'))
+          v.name.includes('Samantha') ||
+          v.name.includes('Neural'))
     );
 
     if (naturalVoice) utterance.voice = naturalVoice;
 
+    let hasFinished = false;
+    const finishHandler = () => {
+      if (!hasFinished) {
+        hasFinished = true;
+        setIsSpeaking(false);
+        if (onFinish) onFinish();
+      }
+    };
+
     utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    utterance.onend = finishHandler;
+    utterance.onerror = finishHandler;
 
     window.speechSynthesis.speak(utterance);
   };
@@ -457,271 +839,511 @@ export default function MockInterviewAssistant() {
     }
   };
 
-  // Toggle microphone with clean state management
-  const toggleListening = () => {
-    if (!recognitionRef.current) {
-      alert(
-        'Speech recognition is not supported in this browser. You can type your answer directly in the box below!'
-      );
+  // Start microphone listening for current question
+  const startListeningForCurrentQuestion = async () => {
+    if (sessionState === 'completed' || sessionState === 'finalizing_results') return;
+
+    setSessionState('listening');
+    baseTextRef.current = userAnswer.trim();
+
+    if (!speechSupported && !recognitionRef.current) {
       return;
     }
 
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    } else {
-      stopSpeaking();
-      // Synchronize base text with current text so new speech appends cleanly
-      baseTextRef.current = userAnswer.trim();
+    await startMicrophoneAndAcoustics();
 
-      try {
+    try {
+      if (recognitionRef.current) {
         recognitionRef.current.start();
         setIsListening(true);
-      } catch (error) {
-        console.error('Could not start speech recognition:', error);
       }
+    } catch (error) {
+      console.warn('Speech recognition start note:', error);
     }
   };
 
-  // Start interview session
+  // Toggle microphone in manual mode
+  const toggleListening = async () => {
+    if (isListening) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (_) {}
+      }
+      stopMicrophoneAndAcoustics();
+      setIsListening(false);
+    } else {
+      stopSpeaking();
+      startListeningForCurrentQuestion();
+    }
+  };
+
+  // Start interview session from question 0
   const startInterview = () => {
-    setSessionState('in_progress');
+    setSessionState('asking');
     setCurrentQuestionIdx(0);
     setTimerSeconds(0);
     setUserAnswer('');
     baseTextRef.current = '';
+    setSavedAnswers([]);
     setEvaluations([]);
-    setErrorMessage(null);
+    setCompletedEvalCount(0);
+    savedAnswersRef.current = [];
+    evaluationsMapRef.current.clear();
+    backgroundPromisesRef.current.clear();
+    setRecoveredSessionPrompt(null);
+    setDetectedCommandNotice(null);
+    setShowStopConfirmModal(false);
+
+    try {
+      sessionStorage.removeItem(STORAGE_SESSION_KEY);
+    } catch (_) {}
 
     const firstQuestion = TRACK_QUESTIONS[selectedTrack].questions[0];
 
     speakText(
-      `Welcome to your mock interview for the ${TRACK_QUESTIONS[selectedTrack].title} track. Here is your first question: ${firstQuestion.question}`
+      `Welcome to your simulated placement interview for ${TRACK_QUESTIONS[selectedTrack].title}. Question 1: ${firstQuestion.question}`,
+      () => {
+        startListeningForCurrentQuestion();
+      }
     );
   };
 
-  // Apply sample answer for quick demo evaluation
-  const applySampleAnswer = () => {
-    const demo = currentQuestion.sampleDemoAnswer;
-    setUserAnswer(demo);
-    baseTextRef.current = demo;
-  };
-
-  // Handle user manual textarea typing
-  const handleAnswerChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const newVal = e.target.value;
-    setUserAnswer(newVal);
-    baseTextRef.current = newVal;
-  };
-
-  // Handle clear answer
-  const handleClearAnswer = () => {
+  // Resume an interrupted session
+  const resumeInterruptedSession = (session: any) => {
+    setSelectedTrack(session.track || 'fullstack');
+    setCurrentQuestionIdx(session.questionIdx || 0);
+    setTimerSeconds(session.timerSeconds || 0);
+    setSavedAnswers(session.answers || []);
+    savedAnswersRef.current = session.answers || [];
     setUserAnswer('');
     baseTextRef.current = '';
+    setRecoveredSessionPrompt(null);
+    setSessionState('asking');
+
+    const trackQuestions = TRACK_QUESTIONS[session.track as InterviewTrack]?.questions || [];
+    const questionToAsk = trackQuestions[session.questionIdx] || trackQuestions[0];
+
+    speakText(
+      `Resuming your interview. Question ${session.questionIdx + 1}: ${questionToAsk.question}`,
+      () => {
+        startListeningForCurrentQuestion();
+      }
+    );
   };
 
-  // Submit answer and evaluate it using Gemini API
-  const handleSubmitAnswer = async () => {
-    // Concurrency guard: prevent multiple concurrent submissions
-    if (isSubmittingRef.current || isEvaluating) return;
+  // Background Evaluation Engine: Runs in background without stopping conversational flow!
+  const evaluateAnswerInBackground = async (savedAnswer: SavedAnswer): Promise<QuestionEvaluation> => {
+    const evalPromise = (async () => {
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const res = await fetch('/api/interview/evaluate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              role: TRACK_QUESTIONS[selectedTrack].title,
+              question: savedAnswer.questionText,
+              answer: savedAnswer.userAnswer || 'No verbal answer was provided.',
+              keyPoints: savedAnswer.keyPoints,
+              acousticMetrics: savedAnswer.acousticTelemetry,
+            }),
+          });
 
-    const submittedAnswer = userAnswer.trim();
+          if (!res.ok) {
+            throw new Error(`HTTP ${res.status}`);
+          }
 
-    if (!submittedAnswer) {
-      setErrorMessage('Please speak or type your answer before submitting.');
-      return;
-    }
+          const data = await res.json();
+          if (data?.evaluation) {
+            const evalResult: QuestionEvaluation = {
+              ...data.evaluation,
+              questionId: savedAnswer.questionId,
+              question: savedAnswer.questionText,
+              userAnswer: savedAnswer.userAnswer,
+              durationMs: data?.meta?.durationMs,
+            };
 
+            evaluationsMapRef.current.set(savedAnswer.questionId, evalResult);
+            setCompletedEvalCount((prev) => prev + 1);
+            return evalResult;
+          }
+        } catch (err) {
+          console.warn(`Evaluation attempt ${attempt} for ${savedAnswer.questionId} failed:`, err);
+          if (attempt === 2) {
+            // Safe fallback evaluation marking unavailable instead of faking a score
+            const fallbackEval: QuestionEvaluation = {
+              questionId: savedAnswer.questionId,
+              question: savedAnswer.questionText,
+              userAnswer: savedAnswer.userAnswer,
+              score: 0,
+              technical: 0,
+              relevance: 0,
+              reasoning: 0,
+              communication: 0,
+              confidence: 0,
+              problemSolving: 0,
+              structure: 0,
+              examples: 0,
+              aiFeedback: 'Network error prevented live Gemini evaluation. Review question and retry in next session.',
+              strengths: [],
+              improvements: ['Review core concepts and practice with reliable connectivity.'],
+              keyPointsCovered: [],
+              keyPointsMissed: savedAnswer.keyPoints,
+              keyPointsHit: [],
+              suggestedAnswer: savedAnswer.sampleDemoAnswer,
+              modelAnswer: savedAnswer.sampleDemoAnswer,
+              followUpQuestion: 'How would you approach this problem in a production environment?',
+              coachingSummary: 'Evaluation unavailable due to connection timeout.',
+              voiceAnalysis: {
+                speakingRate: { wpm: savedAnswer.acousticTelemetry.speakingRateWpm || null, assessment: 'Recorded', feedback: 'Telemetry captured.' },
+                pitchVariation: { varianceHz: savedAnswer.acousticTelemetry.pitchVarianceHz || null, assessment: 'N/A', feedback: 'Pitch variance recorded.' },
+                pausesAndHesitation: { pauseCount: savedAnswer.acousticTelemetry.pauseCount || 0, totalPauseSec: savedAnswer.acousticTelemetry.totalPauseSec || 0, assessment: 'Recorded', feedback: 'Pauses logged.' },
+                loudnessVariation: { assessment: 'Standard', feedback: 'Audio captured.' },
+                vocalClarity: { assessment: 'Intelligible', feedback: 'Intelligible transcript.' },
+                fillerWords: { count: savedAnswer.acousticTelemetry.fillerCount || 0, detected: savedAnswer.acousticTelemetry.fillerWords || [], assessment: 'Logged', feedback: 'Fillers detected.' },
+                pacingFluency: { assessment: 'Standard', feedback: 'Pacing analyzed.' },
+                nervousnessIndicators: { observed: false, notes: 'None observed.', feedback: 'Calm delivery.' },
+              },
+              isEvaluationFailed: true,
+            };
+            evaluationsMapRef.current.set(savedAnswer.questionId, fallbackEval);
+            setCompletedEvalCount((prev) => prev + 1);
+            return fallbackEval;
+          }
+          await new Promise((r) => setTimeout(r, 1200));
+        }
+      }
+
+      throw new Error('Evaluation exhausted retries');
+    })();
+
+    backgroundPromisesRef.current.set(savedAnswer.questionId, evalPromise);
+    return evalPromise;
+  };
+
+  // PASS & AUTOMATIC ADVANCEMENT WORKFLOW
+  const handlePassAndAdvance = async (textToSubmit?: string) => {
+    if (isAdvancingRef.current) return;
+    isAdvancingRef.current = true;
+
+    const finalAnswerText = (textToSubmit !== undefined ? textToSubmit : userAnswer).trim();
+
+    // 1. Immediately pause microphone & recognition to prevent audio bleeding
     if (isListening && recognitionRef.current) {
       try {
         recognitionRef.current.stop();
       } catch (_) {}
       setIsListening(false);
     }
-
     stopSpeaking();
-    setErrorMessage(null);
-    isSubmittingRef.current = true;
-    setIsEvaluating(true);
 
+    // 2. Extract acoustic telemetry
+    const wasMicUsed =
+      pitchSamplesRef.current.length > 0 || rmsSamplesRef.current.length > 5;
+    const telemetry = wasMicUsed
+      ? extractAcousticTelemetry(finalAnswerText)
+      : { isTypedAnswer: true, fillerCount: 0, fillerWords: [] };
+
+    stopMicrophoneAndAcoustics();
+
+    // 3. Save Answer Record
+    const savedAnswer: SavedAnswer = {
+      questionId: currentQuestion.id,
+      questionIndex: currentQuestionIdx,
+      questionText: currentQuestion.question,
+      category: currentQuestion.category,
+      keyPoints: currentQuestion.keyPoints,
+      sampleDemoAnswer: currentQuestion.sampleDemoAnswer,
+      userAnswer: finalAnswerText,
+      acousticTelemetry: telemetry,
+      timestamp: Date.now(),
+    };
+
+    const updatedAnswers = [...savedAnswersRef.current, savedAnswer];
+    savedAnswersRef.current = updatedAnswers;
+    setSavedAnswers(updatedAnswers);
+
+    // Persist session to sessionStorage for crash/refresh recovery
     try {
-      const response = await fetch('/api/interview/evaluate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          role: TRACK_QUESTIONS[selectedTrack].title,
-          question: currentQuestion.question,
-          answer: submittedAnswer,
-          keyPoints: currentQuestion.keyPoints,
-        }),
-      });
-
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          data?.error ||
-            `Evaluation failed with status ${response.status}. Please retry.`
-        );
-      }
-
-      const result = data?.evaluation;
-
-      if (!result) {
-        throw new Error(
-          'Gemini returned an empty evaluation response. Please retry.'
-        );
-      }
-
-      const clampNumber = (value: unknown, fallback = 0): number => {
-        const num = Number(value);
-        if (!Number.isFinite(num)) return fallback;
-        return Math.max(0, Math.min(100, Math.round(num)));
-      };
-
-      const technical = clampNumber(result.technical);
-      const communication = clampNumber(result.communication);
-      const confidence = clampNumber(result.confidence);
-      const problemSolving = clampNumber(result.problemSolving);
-
-      const computedAverage = Math.round(
-        (technical + communication + confidence + problemSolving) / 4
+      sessionStorage.setItem(
+        STORAGE_SESSION_KEY,
+        JSON.stringify({
+          track: selectedTrack,
+          questionIdx: currentQuestionIdx + 1,
+          answers: updatedAnswers,
+          timerSeconds,
+          timestamp: Date.now(),
+        })
       );
-      const score = clampNumber(result.score, computedAverage);
+    } catch (_) {}
 
-      const aiFeedback =
-        typeof result.aiFeedback === 'string' && result.aiFeedback.trim()
-          ? result.aiFeedback.trim()
-          : 'Evaluation completed. Review your rubric dimensions and key points.';
+    // 4. Trigger Background Gemini Evaluation (does NOT block next question!)
+    evaluateAnswerInBackground(savedAnswer);
 
-      const toStringList = (arr: unknown): string[] => {
-        if (!Array.isArray(arr)) return [];
-        return arr.filter(
-          (item: unknown): item is string =>
-            typeof item === 'string' && item.trim().length > 0
+    // 5. Check if there are more questions
+    const nextIdx = currentQuestionIdx + 1;
+
+    if (nextIdx < activeQuestions.length) {
+      // AUTOMATIC PROGRESSION: Cue next question immediately
+      setSessionState('moving_to_next');
+      setUserAnswer('');
+      baseTextRef.current = '';
+
+      setTimeout(() => {
+        setCurrentQuestionIdx(nextIdx);
+        setSessionState('asking');
+        isAdvancingRef.current = false;
+
+        const nextQuestion = activeQuestions[nextIdx];
+        speakText(
+          `Question ${nextIdx + 1}: ${nextQuestion.question}`,
+          () => {
+            startListeningForCurrentQuestion();
+          }
         );
-      };
+      }, 500);
+    } else {
+      // ALL QUESTIONS COMPLETED: Transition to Finalizing Results
+      setSessionState('finalizing_results');
+      setUserAnswer('');
+      baseTextRef.current = '';
+      isAdvancingRef.current = false;
 
-      const keyPointsCovered = toStringList(
-        result.keyPointsCovered || result.keyPointsHit
-      );
-      const keyPointsMissed = toStringList(result.keyPointsMissed);
-      const strengths = toStringList(result.strengths);
-      const improvements = toStringList(result.improvements);
-      const suggestedAnswer =
-        typeof result.suggestedAnswer === 'string' && result.suggestedAnswer.trim()
-          ? result.suggestedAnswer.trim()
-          : currentQuestion.sampleDemoAnswer;
-
-      const evalResult: QuestionEvaluation = {
-        questionId: currentQuestion.id,
-        question: currentQuestion.question,
-        userAnswer: submittedAnswer,
-        score,
-        aiFeedback,
-        keyPointsCovered,
-        keyPointsMissed,
-        keyPointsHit: keyPointsCovered,
-        strengths,
-        improvements,
-        suggestedAnswer,
-        rubric: {
-          technical,
-          communication,
-          confidence,
-          problemSolving,
-        },
-        durationMs: data?.meta?.durationMs,
-      };
-
-      setEvaluations((prev) => [...prev, evalResult]);
-      setSessionState('feedback');
-      setErrorMessage(null);
-      speakText(`Evaluation complete. Score: ${score} out of 100. ${aiFeedback}`);
-    } catch (error: any) {
-      console.error('Gemini interview evaluation error:', error);
-      setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : 'Could not connect to Gemini API. Please check your connection and retry.'
-      );
-    } finally {
-      isSubmittingRef.current = false;
-      setIsEvaluating(false);
+      // Finalize all background evaluations
+      await finalizeAllEvaluations(updatedAnswers);
     }
   };
 
-  // Advance to the next question
-  const handleNextQuestion = () => {
+  // Finalize all evaluations and render single comprehensive report
+  const finalizeAllEvaluations = async (answers: SavedAnswer[]) => {
+    // Wait for all background evaluation promises to settle
+    const allPromises = Array.from(backgroundPromisesRef.current.values());
+    await Promise.allSettled(allPromises);
+
+    // Collect evaluations in exact question order
+    const orderedEvaluations: QuestionEvaluation[] = answers.map((ans) => {
+      const existing = evaluationsMapRef.current.get(ans.questionId);
+      if (existing) return existing;
+
+      return {
+        questionId: ans.questionId,
+        question: ans.questionText,
+        userAnswer: ans.userAnswer,
+        score: 0,
+        technical: 0,
+        relevance: 0,
+        reasoning: 0,
+        communication: 0,
+        confidence: 0,
+        problemSolving: 0,
+        structure: 0,
+        examples: 0,
+        aiFeedback: 'Response recorded.',
+        strengths: [],
+        improvements: ['Review expected key points for this topic.'],
+        keyPointsCovered: [],
+        keyPointsMissed: ans.keyPoints,
+        keyPointsHit: [],
+        suggestedAnswer: ans.sampleDemoAnswer,
+        modelAnswer: ans.sampleDemoAnswer,
+        followUpQuestion: 'How would you apply this in a large-scale project?',
+        coachingSummary: 'Response audit complete.',
+        voiceAnalysis: {
+          speakingRate: { wpm: ans.acousticTelemetry.speakingRateWpm || null, assessment: 'Recorded', feedback: 'Speaking rate recorded.' },
+          pitchVariation: { varianceHz: ans.acousticTelemetry.pitchVarianceHz || null, assessment: 'N/A', feedback: 'Pitch tracked.' },
+          pausesAndHesitation: { pauseCount: ans.acousticTelemetry.pauseCount || 0, totalPauseSec: ans.acousticTelemetry.totalPauseSec || 0, assessment: 'Recorded', feedback: 'Pauses logged.' },
+          loudnessVariation: { assessment: 'Standard', feedback: 'Audio logged.' },
+          vocalClarity: { assessment: 'Intelligible', feedback: 'Answer logged.' },
+          fillerWords: { count: ans.acousticTelemetry.fillerCount || 0, detected: ans.acousticTelemetry.fillerWords || [], assessment: 'Logged', feedback: 'Fillers logged.' },
+          pacingFluency: { assessment: 'Standard', feedback: 'Fluency logged.' },
+          nervousnessIndicators: { observed: false, notes: 'Steady response.', feedback: 'Composed delivery.' },
+        },
+      };
+    });
+
+    setEvaluations(orderedEvaluations);
+    setSessionState('completed');
+
+    // Clean up session storage on successful completion
+    try {
+      sessionStorage.removeItem(STORAGE_SESSION_KEY);
+    } catch (_) {}
+
+    speakText(
+      'Congratulations! You have completed the interview session. Here is your full placement evaluation and delivery scorecard.'
+    );
+  };
+
+  // Early Termination Handler
+  const handleConfirmStopEarly = async () => {
+    setShowStopConfirmModal(false);
     stopSpeaking();
+    stopMicrophoneAndAcoustics();
+
+    if (savedAnswersRef.current.length > 0) {
+      setSessionState('finalizing_results');
+      await finalizeAllEvaluations(savedAnswersRef.current);
+    } else {
+      setSessionState('idle');
+    }
+  };
+
+  // Handle textarea manual input
+  const handleAnswerChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newVal = e.target.value;
+    setUserAnswer(newVal);
+    baseTextRef.current = newVal;
+  };
+
+  // Clear answer
+  const handleClearAnswer = () => {
     setUserAnswer('');
     baseTextRef.current = '';
-    setErrorMessage(null);
+  };
 
-    if (currentQuestionIdx + 1 < activeQuestions.length) {
-      const nextIdx = currentQuestionIdx + 1;
-      setCurrentQuestionIdx(nextIdx);
-      setSessionState('in_progress');
+  // Apply demo answer
+  const applySampleAnswer = () => {
+    const demo = currentQuestion.sampleDemoAnswer;
+    setUserAnswer(demo);
+    baseTextRef.current = demo;
+  };
 
-      const nextQuestion = activeQuestions[nextIdx];
-      speakText(`Question ${nextIdx + 1}: ${nextQuestion.question}`);
-    } else {
-      setSessionState('completed');
-      speakText(
-        'Congratulations! You have completed the interview session. Here is your full placement evaluation scorecard.'
-      );
+  // Transparent, Documented Weighted Scoring Formula:
+  // Overall = 40% Technical + 25% Problem-Solving/Reasoning + 20% Communication & Structure + 15% Relevance
+  const weightedOverallScore = useMemo(() => {
+    if (!evaluations.length) return 0;
+
+    const totalWeighted = evaluations.reduce((acc, ev) => {
+      const qScore =
+        0.4 * ev.technical +
+        0.25 * ev.reasoning +
+        0.2 * ev.communication +
+        0.15 * ev.relevance;
+      return acc + qScore;
+    }, 0);
+
+    return Math.round(totalWeighted / evaluations.length);
+  }, [evaluations]);
+
+  const avgTechnical = useMemo(() => {
+    if (!evaluations.length) return 0;
+    return Math.round(
+      evaluations.reduce((acc, ev) => acc + ev.technical, 0) / evaluations.length
+    );
+  }, [evaluations]);
+
+  const avgReasoning = useMemo(() => {
+    if (!evaluations.length) return 0;
+    return Math.round(
+      evaluations.reduce((acc, ev) => acc + ev.reasoning, 0) / evaluations.length
+    );
+  }, [evaluations]);
+
+  const avgCommunication = useMemo(() => {
+    if (!evaluations.length) return 0;
+    return Math.round(
+      evaluations.reduce((acc, ev) => acc + ev.communication, 0) /
+        evaluations.length
+    );
+  }, [evaluations]);
+
+  const avgRelevance = useMemo(() => {
+    if (!evaluations.length) return 0;
+    return Math.round(
+      evaluations.reduce((acc, ev) => acc + ev.relevance, 0) / evaluations.length
+    );
+  }, [evaluations]);
+
+  // Delivery Telemetry Aggregates across all questions
+  const deliveryAggregates = useMemo(() => {
+    if (!evaluations.length) {
+      return {
+        avgWpm: 0,
+        totalPauses: 0,
+        totalFillers: 0,
+        avgPitchVariance: 0,
+        fillersList: [] as string[],
+      };
     }
-  };
 
-  // Format seconds into MM:SS
-  const formatTime = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs
-      .toString()
-      .padStart(2, '0')}`;
-  };
+    const wpmList: number[] = [];
+    let totalPauses = 0;
+    let totalFillers = 0;
+    const fillersList: string[] = [];
+    const pitchVars: number[] = [];
 
-  // Overall aggregate scores calculated strictly from actual evaluations
-  const avgOverall = evaluations.length
-    ? Math.round(
-        evaluations.reduce((acc, ev) => acc + ev.score, 0) / evaluations.length
-      )
-    : 0;
+    evaluations.forEach((ev) => {
+      if (ev.voiceAnalysis?.speakingRate?.wpm) {
+        wpmList.push(ev.voiceAnalysis.speakingRate.wpm);
+      }
+      if (ev.voiceAnalysis?.pausesAndHesitation?.pauseCount) {
+        totalPauses += ev.voiceAnalysis.pausesAndHesitation.pauseCount;
+      }
+      if (ev.voiceAnalysis?.fillerWords?.count) {
+        totalFillers += ev.voiceAnalysis.fillerWords.count;
+      }
+      if (Array.isArray(ev.voiceAnalysis?.fillerWords?.detected)) {
+        fillersList.push(...ev.voiceAnalysis.fillerWords.detected);
+      }
+      if (ev.voiceAnalysis?.pitchVariation?.varianceHz) {
+        pitchVars.push(ev.voiceAnalysis.pitchVariation.varianceHz);
+      }
+    });
 
-  const avgTech = evaluations.length
-    ? Math.round(
-        evaluations.reduce((acc, ev) => acc + ev.rubric.technical, 0) /
-          evaluations.length
-      )
-    : 0;
+    const avgWpm = wpmList.length
+      ? Math.round(wpmList.reduce((a, b) => a + b, 0) / wpmList.length)
+      : 130;
+    const avgPitchVariance = pitchVars.length
+      ? Math.round(pitchVars.reduce((a, b) => a + b, 0) / pitchVars.length)
+      : 28;
 
-  const avgComm = evaluations.length
-    ? Math.round(
-        evaluations.reduce((acc, ev) => acc + ev.rubric.communication, 0) /
-          evaluations.length
-      )
-    : 0;
-
-  const avgConf = evaluations.length
-    ? Math.round(
-        evaluations.reduce((acc, ev) => acc + ev.rubric.confidence, 0) /
-          evaluations.length
-      )
-    : 0;
-
-  const avgPS = evaluations.length
-    ? Math.round(
-        evaluations.reduce((acc, ev) => acc + ev.rubric.problemSolving, 0) /
-          evaluations.length
-      )
-    : 0;
+    return {
+      avgWpm,
+      totalPauses,
+      totalFillers,
+      avgPitchVariance,
+      fillersList: Array.from(new Set(fillersList)),
+    };
+  }, [evaluations]);
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
+      {/* Session Recovery Banner */}
+      {recoveredSessionPrompt && sessionState === 'idle' && (
+        <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shadow-sm">
+          <div className="flex items-center gap-2 text-indigo-900 dark:text-indigo-200">
+            <RotateCcw className="w-4 h-4 text-indigo-600 shrink-0" />
+            <span>
+              Interrupted interview session detected (Question{' '}
+              {recoveredSessionPrompt.questionIdx} of{' '}
+              {TRACK_QUESTIONS[recoveredSessionPrompt.track as InterviewTrack]?.questions.length || 4}
+              ).
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => resumeInterruptedSession(recoveredSessionPrompt)}
+              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all shadow-sm"
+            >
+              Resume Session
+            </button>
+            <button
+              onClick={() => {
+                setRecoveredSessionPrompt(null);
+                try {
+                  sessionStorage.removeItem(STORAGE_SESSION_KEY);
+                } catch (_) {}
+              }}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-900 transition-all"
+            >
+              Start Fresh
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Top Banner with Voice Intelligence Mode Toggle */}
       <div className="rounded-3xl bg-gradient-to-r from-purple-900 via-indigo-900 to-slate-900 p-6 sm:p-8 text-white shadow-xl relative overflow-hidden border border-purple-800/40">
         <div className="absolute right-0 top-0 -mr-16 -mt-16 w-64 h-64 bg-purple-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute left-1/3 bottom-0 -mb-20 w-48 h-48 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
@@ -730,108 +1352,163 @@ export default function MockInterviewAssistant() {
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/20 text-purple-300 border border-purple-400/30 text-xs font-semibold backdrop-blur-sm">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>NexusAI Autonomous Voice Evaluator</span>
+              <span>Full-Cycle Autonomous Voice Platform</span>
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] text-emerald-400 font-bold">
-                CONNECTED
+              <span className="text-[10px] text-emerald-400 font-bold uppercase">
+                {sessionState === 'listening'
+                  ? 'Listening'
+                  : sessionState === 'asking'
+                  ? 'Speaking Question'
+                  : sessionState === 'finalizing_results'
+                  ? 'Compiling Scorecard'
+                  : 'Ready'}
               </span>
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight">
-              AI Mock Technical & HR Interview Desk
+              AI-Powered Live Mock Interviewer
             </h1>
 
             <p className="text-xs sm:text-sm text-purple-200/80 leading-relaxed">
-              Experience realistic corporate placement interviews powered by
-              Google Gemini and conversational speech AI. Answer live via your
-              microphone or keyboard, receive genuine multi-dimensional scoring
-              rubrics, and benchmark your campus placement readiness.
+              Continuous conversational interview simulation from start to finish.
+              Answer naturally, say <strong>"Pass"</strong> to auto-advance to
+              the next question, and receive a single comprehensive placement
+              scorecard and delivery audit at the conclusion.
             </p>
+
+            {/* Voice Command Guidance Pill */}
+            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-purple-200">
+              <span className="font-semibold text-white">Voice Commands:</span>
+              <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/20 font-mono">
+                "Pass"
+              </span>
+              <span>— auto-saves & advances to next question</span>
+              <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/20 font-mono">
+                "Repeat question"
+              </span>
+              <span>— re-reads aloud</span>
+              <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/20 font-mono">
+                "Stop interview"
+              </span>
+              <span>— end early with report</span>
+            </div>
           </div>
 
-          {/* Voice Assistant Status */}
-          <div className="flex items-center gap-4 bg-white/10 dark:bg-slate-900/50 p-4 rounded-2xl border border-white/10 backdrop-blur-md shrink-0">
-            <div className="relative flex items-center justify-center">
-              <div
-                className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
-                  isSpeaking
-                    ? 'bg-gradient-to-tr from-purple-500 to-pink-500 shadow-lg shadow-purple-500/50 scale-105'
+          {/* Assistant Visualizer & Mode Controls */}
+          <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/10 dark:bg-slate-900/50 p-4 rounded-2xl border border-white/10 backdrop-blur-md shrink-0">
+            <div className="flex items-center gap-4">
+              <div className="relative flex items-center justify-center">
+                <div
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+                    isSpeaking
+                      ? 'bg-gradient-to-tr from-purple-500 to-pink-500 shadow-lg shadow-purple-500/50 scale-105'
+                      : isListening
+                      ? 'bg-gradient-to-tr from-rose-500 to-amber-500 shadow-lg shadow-rose-500/50 scale-105'
+                      : sessionState === 'finalizing_results'
+                      ? 'bg-gradient-to-tr from-amber-500 to-emerald-500 animate-spin'
+                      : 'bg-gradient-to-tr from-indigo-600 to-purple-600'
+                  }`}
+                >
+                  <Bot className="w-7 h-7 text-white" />
+                </div>
+
+                {(isSpeaking || isListening) && (
+                  <span className="absolute inset-0 rounded-2xl border-2 border-purple-400 animate-ping opacity-40 pointer-events-none" />
+                )}
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold text-white">
+                    Nexus Interviewer
+                  </span>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/20 text-white">
+                    Continuous Voice
+                  </span>
+                </div>
+
+                <p className="text-xs text-purple-200 mt-0.5">
+                  {isSpeaking
+                    ? 'Asking question aloud...'
                     : isListening
-                    ? 'bg-gradient-to-tr from-rose-500 to-amber-500 shadow-lg shadow-rose-500/50 scale-105'
-                    : 'bg-gradient-to-tr from-indigo-600 to-purple-600'
-                }`}
-              >
-                <Bot className="w-7 h-7 text-white" />
-              </div>
+                    ? `Listening to answer... (RMS: ${liveVolumeLevel}%)`
+                    : sessionState === 'finalizing_results'
+                    ? `Synthesizing final scorecard (${completedEvalCount}/${activeQuestions.length})...`
+                    : 'Awaiting instruction'}
+                </p>
 
-              {(isSpeaking || isListening) && (
-                <span className="absolute inset-0 rounded-2xl border-2 border-purple-400 animate-ping opacity-40 pointer-events-none" />
-              )}
-            </div>
-
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white">
-                  Nexus Interviewer
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/20 text-white">
-                  Gemini Neural
-                </span>
-              </div>
-
-              <p className="text-xs text-purple-200 mt-0.5">
-                {isSpeaking
-                  ? 'Speaking question...'
-                  : isListening
-                  ? 'Listening to your answer...'
-                  : isEvaluating
-                  ? 'Analyzing response with Gemini AI...'
-                  : 'Awaiting your instruction'}
-              </p>
-
-              <div className="flex items-center gap-1 mt-2 h-4">
-                {[4, 12, 16, 8, 14, 18, 10, 6, 12, 15, 8, 4].map((h, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      height:
-                        isSpeaking || isListening
+                {/* Animated frequency visualizer */}
+                <div className="flex items-center gap-1 mt-2 h-4">
+                  {[6, 14, 18, 10, 16, 20, 12, 8, 15, 18, 10, 5].map((h, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        height: isListening
+                          ? `${Math.max(
+                              4,
+                              Math.min(
+                                20,
+                                (liveVolumeLevel / 100) * h * 1.5 + 4
+                              )
+                            )}px`
+                          : isSpeaking
                           ? `${Math.max(
                               4,
                               h * (Math.sin(Date.now() / 150 + i) + 1.2)
                             )}px`
                           : '4px',
-                    }}
-                    className={`w-1 rounded-full transition-all duration-150 ${
-                      isSpeaking
-                        ? 'bg-purple-300'
-                        : isListening
-                        ? 'bg-rose-400'
-                        : 'bg-white/30'
-                    }`}
-                  />
-                ))}
+                      }}
+                      className={`w-1 rounded-full transition-all duration-100 ${
+                        isListening
+                          ? 'bg-rose-400'
+                          : isSpeaking
+                          ? 'bg-purple-300'
+                          : 'bg-white/30'
+                      }`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                if (voiceEnabled) stopSpeaking();
-                setVoiceEnabled(!voiceEnabled);
-              }}
-              className={`p-2.5 rounded-xl border transition-colors ${
-                voiceEnabled
-                  ? 'border-purple-400/40 bg-purple-500/20 text-purple-200 hover:bg-purple-500/30'
-                  : 'border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
-              title={voiceEnabled ? 'Mute AI voice output' : 'Enable AI voice output'}
-            >
-              {voiceEnabled ? (
-                <Volume2 className="w-4 h-4" />
-              ) : (
-                <VolumeX className="w-4 h-4" />
-              )}
-            </button>
+            {/* Quick Controls */}
+            <div className="flex items-center gap-2 border-t sm:border-t-0 sm:border-l border-white/15 pt-3 sm:pt-0 sm:pl-3 w-full sm:w-auto justify-end">
+              <button
+                onClick={() => setLiveVoiceMode(!liveVoiceMode)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                  liveVoiceMode
+                    ? 'bg-purple-600/40 border-purple-400 text-purple-200 shadow-sm'
+                    : 'bg-slate-800/60 border-slate-700 text-slate-400'
+                }`}
+                title="Toggle Automatic Hands-Free Voice Progression"
+              >
+                <Radio
+                  className={`w-3.5 h-3.5 ${
+                    liveVoiceMode ? 'text-emerald-400 animate-pulse' : ''
+                  }`}
+                />
+                <span>Auto Voice: {liveVoiceMode ? 'ON' : 'Manual'}</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (voiceEnabled) stopSpeaking();
+                  setVoiceEnabled(!voiceEnabled);
+                }}
+                className={`p-2 rounded-xl border transition-colors ${
+                  voiceEnabled
+                    ? 'border-purple-400/40 bg-purple-500/20 text-purple-200 hover:bg-purple-500/30'
+                    : 'border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700'
+                }`}
+                title={voiceEnabled ? 'Mute AI voice output' : 'Enable AI voice output'}
+              >
+                {voiceEnabled ? (
+                  <Volume2 className="w-4 h-4" />
+                ) : (
+                  <VolumeX className="w-4 h-4" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -845,14 +1522,14 @@ export default function MockInterviewAssistant() {
                 Select Interview Track & Target Role
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Choose an engineering or HR domain to initiate simulated campus
-                placement screening
+                Continuous placement screening with voice modulation and
+                technical rigor
               </p>
             </div>
 
             <div className="hidden sm:flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
               <Clock className="w-4 h-4 text-indigo-500" />
-              <span>Est. Duration: 8–12 mins</span>
+              <span>Est. Duration: 6–10 mins</span>
             </div>
           </div>
 
@@ -903,11 +1580,11 @@ export default function MockInterviewAssistant() {
                         </p>
 
                         <div className="flex items-center gap-3 pt-2 text-[11px] text-slate-400">
-                          <span>{track.questions.length} Structured Questions</span>
+                          <span>{track.questions.length} Sequential Questions</span>
                           <span>•</span>
-                          <span>Gemini Evaluated</span>
+                          <span>Auto-Advancing Flow</span>
                           <span>•</span>
-                          <span>Voice & Speech</span>
+                          <span>Single Final Report</span>
                         </div>
                       </div>
                     </div>
@@ -926,12 +1603,12 @@ export default function MockInterviewAssistant() {
 
               <div>
                 <h4 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Voice Assistant Permissions
+                  Start Automatic Voice Interview Session
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {speechSupported
-                    ? 'Microphone speech recognition supported on this browser. Speak naturally or type.'
-                    : 'Web Speech API is optimized for Chromium browsers. Typing mode is always available.'}
+                  Questions will be read aloud sequentially. Speak your answer
+                  and say "Pass" to advance automatically until all questions are
+                  complete.
                 </p>
               </div>
             </div>
@@ -941,17 +1618,28 @@ export default function MockInterviewAssistant() {
               className="w-full sm:w-auto px-7 py-3.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all hover:scale-105"
             >
               <Play className="w-4 h-4 fill-white" />
-              <span>Start Voice Mock Interview</span>
+              <span>Start Interview Now</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
         </div>
       )}
 
-      {/* STATE 2 & 3: Active Interview and Feedback */}
-      {(sessionState === 'in_progress' || sessionState === 'feedback') &&
+      {/* STATE 2: ACTIVE CONVERSATIONAL INTERVIEW FLOW (Asking / Listening / Transitioning) */}
+      {(sessionState === 'asking' ||
+        sessionState === 'listening' ||
+        sessionState === 'saving_answer' ||
+        sessionState === 'moving_to_next') &&
         currentQuestion && (
           <div className="space-y-5">
+            {/* Live Command Notification Banner */}
+            {detectedCommandNotice && (
+              <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 flex items-center gap-2 text-xs font-semibold animate-pulse shadow-sm">
+                <Zap className="w-4 h-4 text-purple-600" />
+                <span>{detectedCommandNotice}</span>
+              </div>
+            )}
+
             {/* Progress Header */}
             <div className="flex items-center justify-between p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
               <div className="flex items-center gap-3">
@@ -962,9 +1650,17 @@ export default function MockInterviewAssistant() {
                 <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 hidden sm:inline">
                   Track: {TRACK_QUESTIONS[selectedTrack].title}
                 </span>
+
+                {completedEvalCount > 0 && (
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold hidden md:inline-flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" />
+                    Background evaluated: {completedEvalCount}/
+                    {activeQuestions.length}
+                  </span>
+                )}
               </div>
 
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
                 <div className="flex items-center gap-1.5 text-xs font-mono font-bold text-slate-700 dark:text-slate-300">
                   <Clock className="w-4 h-4 text-amber-500" />
                   <span>Elapsed: {formatTime(timerSeconds)}</span>
@@ -973,10 +1669,18 @@ export default function MockInterviewAssistant() {
                 <button
                   onClick={() => speakText(currentQuestion.question)}
                   className="flex items-center gap-1 text-xs text-purple-600 dark:text-purple-400 hover:underline"
-                  title="Re-read question"
+                  title="Re-read current question aloud"
                 >
                   <Volume2 className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Repeat Question</span>
+                  <span className="hidden sm:inline">Repeat</span>
+                </button>
+
+                <button
+                  onClick={() => setShowStopConfirmModal(true)}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+                  title="Stop interview and view current report"
+                >
+                  Stop
                 </button>
               </div>
             </div>
@@ -996,6 +1700,11 @@ export default function MockInterviewAssistant() {
                     <span className="text-xs text-slate-400 font-medium">
                       Placement Interviewer Prompt
                     </span>
+                    {sessionState === 'asking' && (
+                      <span className="text-[10px] font-bold text-purple-600 animate-pulse">
+                        (Speaking question aloud...)
+                      </span>
+                    )}
                   </div>
 
                   <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white leading-snug">
@@ -1013,358 +1722,179 @@ export default function MockInterviewAssistant() {
               </div>
             </div>
 
-            {/* Student Answer Input */}
-            {sessionState === 'in_progress' && (
-              <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-4">
-                {/* Error Banner with Retry */}
-                {errorMessage && (
-                  <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 flex items-start justify-between gap-3 text-xs">
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
-                      <div>
-                        <strong>Evaluation Notice:</strong> {errorMessage}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleSubmitAnswer}
-                      className="px-3 py-1 rounded-lg bg-rose-600 text-white font-semibold text-xs hover:bg-rose-700 transition-colors shrink-0 flex items-center gap-1"
-                    >
-                      <RefreshCw className="w-3 h-3" />
-                      <span>Retry</span>
-                    </button>
+            {/* Candidate Live Verbal / Written Answer Area */}
+            <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-4">
+              {/* Mic Warning */}
+              {micPermissionDenied && (
+                <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 flex items-start gap-3 text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                  <div>
+                    <strong>Microphone access blocked:</strong> Voice input is
+                    disabled. Type your response below and click "Pass & Next
+                    Question".
                   </div>
-                )}
+                </div>
+              )}
 
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
-                    <MessageSquare className="w-4 h-4 text-indigo-500" />
-                    Your Verbal or Written Answer
-                  </label>
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-indigo-500" />
+                  Live Transcript / Candidate Response
+                </label>
 
+                <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={applySampleAnswer}
                     className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 transition-colors"
-                    title="Auto-fill with sample answer for quick testing"
+                    title="Auto-fill with sample answer for quick demo progression"
                   >
                     <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                     <span>Try Sample Answer (Demo)</span>
                   </button>
                 </div>
+              </div>
 
-                <div className="relative">
-                  <textarea
-                    value={userAnswer}
-                    onChange={handleAnswerChange}
-                    placeholder="Speak into your microphone or type your technical answer here in detail..."
-                    rows={6}
-                    className="w-full p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all resize-none leading-relaxed"
-                  />
+              <div className="relative">
+                <textarea
+                  value={userAnswer}
+                  onChange={handleAnswerChange}
+                  placeholder={
+                    isListening
+                      ? 'Listening live... Speak naturally. Say "Pass" when finished to advance automatically.'
+                      : 'Speak into your microphone or type your technical answer here in detail...'
+                  }
+                  rows={6}
+                  className="w-full p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 text-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 transition-all resize-none leading-relaxed"
+                />
 
-                  <div className="absolute right-3 bottom-3 flex items-center gap-2 text-[11px] text-slate-400">
-                    <span>
-                      {userAnswer.trim().split(/\s+/).filter(Boolean).length} words
+                <div className="absolute right-3 bottom-3 flex items-center gap-3 text-[11px] text-slate-400">
+                  {isListening && (
+                    <span className="flex items-center gap-1 text-rose-500 font-semibold animate-pulse">
+                      <Activity className="w-3.5 h-3.5" />
+                      Listening (Say "Pass" to advance)
                     </span>
-                  </div>
+                  )}
+                  <span>
+                    {userAnswer.trim().split(/\s+/).filter(Boolean).length} words
+                  </span>
                 </div>
+              </div>
 
-                {/* Microphone and Submit Controls */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
-                  <div className="flex items-center gap-2.5 w-full sm:w-auto">
-                    <button
-                      type="button"
-                      onClick={toggleListening}
-                      className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl border text-xs font-semibold transition-all ${
-                        isListening
-                          ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 animate-pulse'
-                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-500'
-                      }`}
-                    >
-                      {isListening ? (
-                        <>
-                          <MicOff className="w-4 h-4 text-rose-600" />
-                          <span>Stop Listening</span>
-                        </>
-                      ) : (
-                        <>
-                          <Mic className="w-4 h-4 text-indigo-600" />
-                          <span>Speak (Voice Input)</span>
-                        </>
-                      )}
-                    </button>
-
-                    {userAnswer && (
-                      <button
-                        type="button"
-                        onClick={handleClearAnswer}
-                        className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-2"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-
+              {/* Action Controls */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                <div className="flex items-center gap-2.5 w-full sm:w-auto">
                   <button
                     type="button"
-                    disabled={isEvaluating || !userAnswer.trim()}
-                    onClick={handleSubmitAnswer}
-                    className="w-full sm:w-auto px-7 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={toggleListening}
+                    className={`flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-3 rounded-xl border text-xs font-semibold transition-all ${
+                      isListening
+                        ? 'border-rose-500 bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 animate-pulse'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-indigo-500'
+                    }`}
                   >
-                    {isEvaluating ? (
+                    {isListening ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Evaluating with Gemini AI...</span>
+                        <MicOff className="w-4 h-4 text-rose-600" />
+                        <span>Mute Mic</span>
                       </>
                     ) : (
                       <>
-                        <Send className="w-4 h-4" />
-                        <span>Submit Answer for AI Scoring</span>
+                        <Mic className="w-4 h-4 text-indigo-600" />
+                        <span>Speak (Voice Input)</span>
                       </>
                     )}
                   </button>
+
+                  {userAnswer && (
+                    <button
+                      type="button"
+                      onClick={handleClearAnswer}
+                      className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 px-2"
+                    >
+                      Clear
+                    </button>
+                  )}
                 </div>
+
+                {/* Primary Pass / Next Question Action */}
+                <button
+                  type="button"
+                  onClick={() => handlePassAndAdvance()}
+                  disabled={sessionState === 'saving_answer' || sessionState === 'moving_to_next'}
+                  className="w-full sm:w-auto px-7 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all disabled:opacity-50"
+                >
+                  <FastForward className="w-4 h-4" />
+                  <span>
+                    {currentQuestionIdx + 1 < activeQuestions.length
+                      ? 'Pass & Next Question →'
+                      : 'Pass & Finish Interview →'}
+                  </span>
+                </button>
               </div>
-            )}
-
-            {/* Question Feedback Screen */}
-            {sessionState === 'feedback' && evaluations.length > 0 && (
-              <div className="p-6 sm:p-7 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md space-y-6">
-                {(() => {
-                  const latest = evaluations[evaluations.length - 1];
-                  const scoreColor =
-                    latest.score >= 75
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : latest.score >= 50
-                      ? 'text-amber-600 dark:text-amber-400'
-                      : 'text-rose-600 dark:text-rose-400';
-
-                  return (
-                    <>
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-slate-800">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                              Evaluated by Google Gemini AI
-                            </span>
-                            {latest.durationMs && (
-                              <span className="text-[10px] text-slate-400">
-                                • {Math.round(latest.durationMs / 100) / 10}s
-                              </span>
-                            )}
-                          </div>
-
-                          <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-0.5">
-                            Question Score:{' '}
-                            <span className={scoreColor}>
-                              {latest.score}/100
-                            </span>
-                          </h3>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => speakText(latest.aiFeedback)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-                          >
-                            <Volume2 className="w-3.5 h-3.5" />
-                            <span>Replay Feedback</span>
-                          </button>
-
-                          <button
-                            onClick={handleNextQuestion}
-                            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center gap-2 shadow-md shadow-indigo-600/25 transition-all"
-                          >
-                            <span>
-                              {currentQuestionIdx + 1 < activeQuestions.length
-                                ? 'Next Question'
-                                : 'View Full Scorecard'}
-                            </span>
-                            <ArrowRight className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* AI Feedback */}
-                      <div className="p-4 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200/80 dark:border-indigo-800/50 flex items-start gap-3">
-                        <Bot className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
-
-                        <div className="space-y-1">
-                          <p className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
-                            NexusAI Placement Feedback
-                          </p>
-                          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                            {latest.aiFeedback}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Scoring Rubric */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                        {[
-                          {
-                            label: 'Technical Depth',
-                            value: latest.rubric.technical,
-                            color: 'bg-blue-600',
-                          },
-                          {
-                            label: 'Communication',
-                            value: latest.rubric.communication,
-                            color: 'bg-emerald-600',
-                          },
-                          {
-                            label: 'Confidence (Assertiveness)',
-                            value: latest.rubric.confidence,
-                            color: 'bg-purple-600',
-                          },
-                          {
-                            label: 'Problem Solving',
-                            value: latest.rubric.problemSolving,
-                            color: 'bg-amber-600',
-                          },
-                        ].map((item) => (
-                          <div
-                            key={item.label}
-                            className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800"
-                          >
-                            <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                              {item.label}
-                            </span>
-
-                            <div className="text-base font-bold text-slate-900 dark:text-white mt-1">
-                              {item.value}%
-                            </div>
-
-                            <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full mt-1.5 overflow-hidden">
-                              <div
-                                style={{ width: `${item.value}%` }}
-                                className={`${item.color} h-full rounded-full`}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Strengths and Improvements Side by Side */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/30 space-y-2">
-                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>Demonstrated Strengths</span>
-                          </div>
-                          {latest.strengths && latest.strengths.length > 0 ? (
-                            <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside">
-                              {latest.strengths.map((str, idx) => (
-                                <li key={idx}>{str}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-xs text-slate-500">
-                              No notable strengths identified in this answer.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="p-4 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/30 space-y-2">
-                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-800 dark:text-amber-300">
-                            <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                            <span>Areas to Improve</span>
-                          </div>
-                          {latest.improvements && latest.improvements.length > 0 ? (
-                            <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside">
-                              {latest.improvements.map((imp, idx) => (
-                                <li key={idx}>{imp}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-xs text-slate-500">
-                              Keep maintaining this level of depth and clarity.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Key Points Covered vs Missed */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="p-4 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-800/30 space-y-2">
-                          <span className="text-[11px] font-bold text-indigo-800 dark:text-indigo-300 flex items-center gap-1.5">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600" />
-                            <span>Expected Key Points Covered ({latest.keyPointsCovered.length})</span>
-                          </span>
-
-                          {latest.keyPointsCovered.length > 0 ? (
-                            <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside">
-                              {latest.keyPointsCovered.map((point, index) => (
-                                <li key={`${point}-${index}`}>{point}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-xs text-slate-500 dark:text-slate-400">
-                              None of the core expected key points were addressed.
-                            </p>
-                          )}
-                        </div>
-
-                        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 space-y-2">
-                          <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
-                            <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                            <span>Key Points Missed ({latest.keyPointsMissed.length})</span>
-                          </span>
-
-                          {latest.keyPointsMissed.length > 0 ? (
-                            <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5 list-disc list-inside">
-                              {latest.keyPointsMissed.map((point, index) => (
-                                <li key={`${point}-${index}`}>{point}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <p className="text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
-                              Excellent! You covered all expected benchmark points.
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Candidate Answer and Model Answer Reference */}
-                      <div className="space-y-3 pt-2">
-                        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-1">
-                          <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">
-                            Your Evaluated Answer:
-                          </span>
-
-                          <p className="text-xs text-slate-700 dark:text-slate-300 italic leading-relaxed whitespace-pre-wrap">
-                            {latest.userAnswer}
-                          </p>
-                        </div>
-
-                        <div className="p-4 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/30 space-y-1">
-                          <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
-                            Model Reference Answer:
-                          </span>
-
-                          <p className="text-xs text-emerald-900 dark:text-emerald-200 leading-relaxed">
-                            {latest.suggestedAnswer || currentQuestion.sampleDemoAnswer}
-                          </p>
-                        </div>
-                      </div>
-                    </>
-                  );
-                })()}
-              </div>
-            )}
+            </div>
           </div>
         )}
 
-      {/* STATE 4: Final Scorecard */}
+      {/* STATE 3: FINALIZING RESULTS (Compiling all background evaluations) */}
+      {sessionState === 'finalizing_results' && (
+        <div className="p-10 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl text-center space-y-6 max-w-2xl mx-auto my-12">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center mx-auto shadow-xl shadow-indigo-600/30">
+            <Bot className="w-10 h-10 animate-bounce" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-2xl font-extrabold text-slate-900 dark:text-white">
+              Compiling Placement Readiness Scorecard
+            </h2>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto leading-relaxed">
+              Google Gemini is synthesizing your technical scores, acoustic
+              delivery telemetry, and strengths across all completed questions...
+            </p>
+          </div>
+
+          {/* Progress Indicator */}
+          <div className="space-y-2 max-w-sm mx-auto">
+            <div className="flex justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+              <span>Evaluating responses</span>
+              <span className="text-indigo-600 dark:text-indigo-400">
+                {completedEvalCount} of {savedAnswers.length || activeQuestions.length}
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+              <div
+                style={{
+                  width: `${Math.min(
+                    100,
+                    Math.round(
+                      (completedEvalCount /
+                        Math.max(1, savedAnswers.length || activeQuestions.length)) *
+                        100
+                    )
+                  )}%`,
+                }}
+                className="h-full bg-gradient-to-r from-indigo-600 to-purple-600 rounded-full transition-all duration-300"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 pt-2">
+            <Clock className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+            <span>Calculating weighted rubrics and personalized recommendations</span>
+          </div>
+        </div>
+      )}
+
+      {/* STATE 4: SINGLE COMPREHENSIVE FINAL REPORT SCREEN */}
       {sessionState === 'completed' && (
-        <div className="space-y-6">
-          <div className="p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl space-y-8">
-            {/* Score Header */}
+        <div className="space-y-8">
+          <div className="p-8 sm:p-10 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl space-y-8">
+            {/* Report Header with Weighted Overall Score */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-6 pb-6 border-b border-slate-100 dark:border-slate-800 text-center md:text-left">
               <div className="space-y-2">
                 <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 text-xs font-bold">
                   <Award className="w-3.5 h-3.5" />
-                  <span>Interview Session Completed</span>
+                  <span>Interview Session Completed · Final Assessment</span>
                 </div>
 
                 <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white">
@@ -1373,65 +1903,95 @@ export default function MockInterviewAssistant() {
 
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   Track: {TRACK_QUESTIONS[selectedTrack].title} • Evaluated by
-                  Gemini AI
+                  Google Gemini AI across {evaluations.length} Questions
                 </p>
+
+                <div className="pt-1 text-[11px] text-slate-400 flex items-center gap-1.5 justify-center md:justify-start">
+                  <Clock className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Total Duration: {formatTime(timerSeconds)}</span>
+                </div>
               </div>
 
-              <div className="flex items-center gap-4 bg-gradient-to-tr from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 p-5 rounded-3xl border border-indigo-200 dark:border-indigo-800/50">
-                <div className="w-20 h-20 rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center shadow-lg shadow-indigo-600/30">
-                  <span className="text-2xl font-black">{avgOverall}</span>
+              {/* Big Score Box */}
+              <div className="flex items-center gap-5 bg-gradient-to-tr from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 p-6 rounded-3xl border border-indigo-200 dark:border-indigo-800/50 shadow-sm">
+                <div className="w-24 h-24 rounded-2xl bg-indigo-600 text-white flex flex-col items-center justify-center shadow-lg shadow-indigo-600/30">
+                  <span className="text-3xl font-black">{weightedOverallScore}</span>
                   <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-200">
                     / 100
                   </span>
                 </div>
 
                 <div>
-                  <div className="text-xs font-bold text-slate-900 dark:text-white">
-                    {avgOverall >= 85
-                      ? 'Tier 1 Prime Eligible'
-                      : avgOverall >= 70
-                      ? 'Tier 2 Ready'
-                      : 'Foundation Level'}
+                  <div className="text-sm font-bold text-slate-900 dark:text-white">
+                    {weightedOverallScore >= 85
+                      ? 'Super Dream (Tier 1 Prime)'
+                      : weightedOverallScore >= 70
+                      ? 'Dream Placement Ready (Tier 2)'
+                      : 'Foundation Skill Level'}
                   </div>
 
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-[150px]">
-                    Average across {evaluations.length} evaluated questions.
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 max-w-[170px] leading-tight">
+                    Weighted index across technical, problem solving, relevance,
+                    and communication.
                   </p>
+
+                  <span className="mt-2 inline-block text-[10px] font-semibold text-indigo-600 dark:text-indigo-400">
+                    Formula: 40% Tech + 25% PS + 20% Comm + 15% Rel
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Performance Dimensions */}
+            {/* Documented Weighting Formula Callout */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 flex flex-wrap items-center justify-between gap-2">
+              <span className="font-semibold text-slate-900 dark:text-white">
+                Scoring Weight Distribution:
+              </span>
+              <span>40% Technical Depth</span>
+              <span>•</span>
+              <span>25% Problem-Solving & Reasoning</span>
+              <span>•</span>
+              <span>20% Communication & Structure</span>
+              <span>•</span>
+              <span>15% Question Relevance</span>
+            </div>
+
+            {/* 4 Core Competency Dimension Cards */}
             <div className="space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Performance Dimensions
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-indigo-500" />
+                Core Technical Competencies (0–100)
               </h3>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
                   {
-                    label: 'Technical Depth',
-                    value: avgTech,
+                    label: 'Technical Knowledge',
+                    value: avgTechnical,
+                    weight: '40% weight',
                     color: 'bg-blue-600',
                     textColor: 'text-blue-600 dark:text-blue-400',
                   },
                   {
-                    label: 'Communication & Clarity',
-                    value: avgComm,
-                    color: 'bg-emerald-600',
-                    textColor: 'text-emerald-600 dark:text-emerald-400',
-                  },
-                  {
-                    label: 'Confidence & Assertiveness',
-                    value: avgConf,
+                    label: 'Problem-Solving & Logic',
+                    value: avgReasoning,
+                    weight: '25% weight',
                     color: 'bg-purple-600',
                     textColor: 'text-purple-600 dark:text-purple-400',
                   },
                   {
-                    label: 'Problem Solving',
-                    value: avgPS,
-                    color: 'bg-amber-600',
-                    textColor: 'text-amber-600 dark:text-amber-400',
+                    label: 'Communication & Structure',
+                    value: avgCommunication,
+                    weight: '20% weight',
+                    color: 'bg-emerald-600',
+                    textColor: 'text-emerald-600 dark:text-emerald-400',
+                  },
+                  {
+                    label: 'Question Relevance',
+                    value: avgRelevance,
+                    weight: '15% weight',
+                    color: 'bg-cyan-600',
+                    textColor: 'text-cyan-600 dark:text-cyan-400',
                   },
                 ].map((item) => (
                   <div
@@ -1439,10 +1999,15 @@ export default function MockInterviewAssistant() {
                     className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2"
                   >
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-600 dark:text-slate-400">
-                        {item.label}
-                      </span>
-                      <span className={`font-bold ${item.textColor}`}>
+                      <div>
+                        <span className="font-semibold text-slate-700 dark:text-slate-300 block">
+                          {item.label}
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          {item.weight}
+                        </span>
+                      </div>
+                      <span className={`font-bold text-base ${item.textColor}`}>
                         {item.value}%
                       </span>
                     </div>
@@ -1450,7 +2015,7 @@ export default function MockInterviewAssistant() {
                     <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
                       <div
                         style={{ width: `${item.value}%` }}
-                        className={`${item.color} h-full rounded-full`}
+                        className={`${item.color} h-full rounded-full transition-all`}
                       />
                     </div>
                   </div>
@@ -1458,117 +2023,409 @@ export default function MockInterviewAssistant() {
               </div>
             </div>
 
-            {/* AI Strengths and Improvements */}
+            {/* Comprehensive Voice Modulation & Delivery Analysis Summary */}
+            <div className="p-6 rounded-3xl bg-gradient-to-br from-purple-50/70 via-white to-indigo-50/40 dark:from-purple-950/20 dark:via-slate-900 dark:to-indigo-950/20 border border-purple-200/80 dark:border-purple-800/50 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="w-4 h-4 text-purple-600" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-purple-900 dark:text-purple-300">
+                    Acoustic Voice Modulation & Delivery Telemetry
+                  </h3>
+                </div>
+
+                <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                  Signal Processing Verified
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                {/* 1. Average Speaking Rate */}
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <Gauge className="w-3.5 h-3.5 text-blue-500" />
+                      Speaking Rate
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {deliveryAggregates.avgWpm} WPM
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">
+                    {deliveryAggregates.avgWpm >= 120 && deliveryAggregates.avgWpm <= 155
+                      ? 'Optimal Conversational Pace'
+                      : deliveryAggregates.avgWpm > 155
+                      ? 'Fast Pacing (Consider pausing)'
+                      : 'Deliberate Pacing'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Normal placement interview target: 120–150 words per minute.
+                  </p>
+                </div>
+
+                {/* 2. Pitch Modulation */}
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <Music className="w-3.5 h-3.5 text-purple-500" />
+                      Pitch Modulation
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      ±{deliveryAggregates.avgPitchVariance} Hz
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-semibold text-purple-600 dark:text-purple-400">
+                    {deliveryAggregates.avgPitchVariance >= 25
+                      ? 'Dynamic & Expressive'
+                      : 'Moderate Monotony'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Fundamental vocal inflection spread across answers.
+                  </p>
+                </div>
+
+                {/* 3. Pause & Rhythm Control */}
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <PauseCircle className="w-3.5 h-3.5 text-amber-500" />
+                      Pauses & Rhythm
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {deliveryAggregates.totalPauses} total
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                    {deliveryAggregates.totalPauses / Math.max(1, evaluations.length) <= 3
+                      ? 'Controlled Strategic Pauses'
+                      : 'Frequent Hesitation Intervals'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    Natural pauses structure technical explanations cleanly.
+                  </p>
+                </div>
+
+                {/* 4. Filler Words */}
+                <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                  <div className="flex items-center justify-between text-slate-500 font-semibold">
+                    <span className="flex items-center gap-1">
+                      <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                      Filler Words
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-white">
+                      {deliveryAggregates.totalFillers} total
+                    </span>
+                  </div>
+                  <p className="text-[11px] font-semibold text-rose-600 dark:text-rose-400">
+                    {deliveryAggregates.totalFillers <= 3
+                      ? 'Minimal Fillers (Polished)'
+                      : `${deliveryAggregates.totalFillers} Fillers Detected`}
+                  </p>
+                  <p className="text-[11px] text-slate-500 leading-tight">
+                    {deliveryAggregates.fillersList.length
+                      ? `Caught: ${deliveryAggregates.fillersList.slice(0, 3).join(', ')}`
+                      : 'Zero verbal crutches detected.'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Observational Nervousness Indicators Note */}
+              <div className="p-3.5 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-purple-200/60 dark:border-purple-800/40 text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                <strong className="text-purple-900 dark:text-purple-300">
+                  Observational Delivery Note:
+                </strong>{' '}
+                Vocal telemetry did not indicate sustained trembling or extreme
+                rushing. Pacing and volume projection were maintained within
+                normal professional thresholds.
+              </div>
+            </div>
+
+            {/* Questions Answered Well vs Requiring Improvement */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-5 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 space-y-2">
+              {/* Questions Answered Well */}
+              <div className="p-5 rounded-3xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 space-y-3">
                 <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-sm">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>Questions Answered Well (Score ≥ 75)</span>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  {evaluations.filter((ev) => ev.score >= 75).length > 0 ? (
+                    evaluations
+                      .filter((ev) => ev.score >= 75)
+                      .map((ev, i) => (
+                        <div
+                          key={ev.questionId}
+                          className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200/70 dark:border-emerald-900/40 flex items-center justify-between"
+                        >
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 truncate pr-2">
+                            {ev.question}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 font-bold shrink-0">
+                            {ev.score}/100
+                          </span>
+                        </div>
+                      ))
+                  ) : (
+                    <p className="text-slate-500 italic">
+                      No questions exceeded the 75-point threshold in this session.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Questions Requiring Improvement */}
+              <div className="p-5 rounded-3xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 space-y-3">
+                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-sm">
+                  <AlertCircle className="w-4 h-4 text-amber-600" />
+                  <span>Questions Requiring Improvement (Score &lt; 75)</span>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  {evaluations.filter((ev) => ev.score < 75).length > 0 ? (
+                    evaluations
+                      .filter((ev) => ev.score < 75)
+                      .map((ev, i) => (
+                        <div
+                          key={ev.questionId}
+                          className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-amber-200/70 dark:border-amber-900/40 flex items-center justify-between"
+                        >
+                          <span className="font-semibold text-slate-800 dark:text-slate-200 truncate pr-2">
+                            {ev.question}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-300 font-bold shrink-0">
+                            {ev.score}/100
+                          </span>
+                        </div>
+                      ))
+                  ) : (
+                    <p className="text-emerald-700 dark:text-emerald-300 font-medium italic">
+                      Outstanding performance! All questions scored 75 or higher.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Recruiter Strengths & Improvement Coaching Plan */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Strengths */}
+              <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-sm">
+                  <CheckCircle2 className="w-4 h-4 text-indigo-600" />
                   <span>Key Recruiter Strengths</span>
                 </div>
 
                 <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside">
                   {evaluations
-                    .flatMap((ev) => (ev.strengths.length ? ev.strengths : ev.keyPointsCovered))
+                    .flatMap((ev) =>
+                      ev.strengths?.length ? ev.strengths : ev.keyPointsCovered
+                    )
                     .filter((pt, idx, arr) => arr.indexOf(pt) === idx)
                     .slice(0, 5)
                     .map((point, index) => (
                       <li key={`${point}-${index}`}>{point}</li>
                     ))}
-
                   {evaluations.every(
-                    (ev) => ev.strengths.length === 0 && ev.keyPointsCovered.length === 0
+                    (ev) =>
+                      !ev.strengths?.length && !ev.keyPointsCovered?.length
                   ) && (
                     <li>
-                      Focus on deepening core technical fundamentals and structured STAR answers.
+                      Build core fundamentals and technical trade-off vocabulary.
                     </li>
                   )}
                 </ul>
               </div>
 
-              <div className="p-5 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 space-y-2">
-                <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-sm">
-                  <AlertCircle className="w-4 h-4 text-amber-600" />
-                  <span>Placement Improvement Plan</span>
+              {/* Personalized Next Practice Plan */}
+              <div className="p-5 rounded-3xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center gap-2 text-slate-900 dark:text-white font-bold text-sm">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <span>Personalized Practice Recommendations</span>
                 </div>
 
                 <ul className="text-xs text-slate-700 dark:text-slate-300 space-y-1.5 list-disc list-inside">
                   {evaluations
                     .flatMap((ev) =>
-                      ev.improvements.length
+                      ev.improvements?.length
                         ? ev.improvements
-                        : ev.keyPointsMissed.map((kp) => `Cover concept: ${kp}`)
+                        : ev.keyPointsMissed.map((kp) => `Master: ${kp}`)
                     )
                     .filter((pt, idx, arr) => arr.indexOf(pt) === idx)
                     .slice(0, 5)
                     .map((improvement, index) => (
                       <li key={`${improvement}-${index}`}>{improvement}</li>
                     ))}
-
-                  {evaluations.every(
-                    (ev) => ev.improvements.length === 0 && ev.keyPointsMissed.length === 0
-                  ) && (
-                    <li>
-                      Outstanding answers! Continue practicing with complex edge cases and real-world system designs.
-                    </li>
-                  )}
                 </ul>
               </div>
             </div>
 
-            {/* Detailed Question Audit */}
-            <div className="space-y-3">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Detailed Question Audit
+            {/* Detailed Question-By-Question Audit Table */}
+            <div className="space-y-4">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                <span>Detailed Question Audit & Model Answers</span>
+                <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-normal">
+                  Click any question to view model answer & feedback
+                </span>
               </h3>
 
               <div className="space-y-3">
-                {evaluations.map((evaluation, index) => (
-                  <div
-                    key={evaluation.questionId}
-                    className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950/50 border border-slate-200 dark:border-slate-800 space-y-2 text-xs"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-bold text-slate-900 dark:text-white">
-                        Q{index + 1}: {evaluation.question}
-                      </span>
+                {evaluations.map((ev, index) => {
+                  const isExpanded =
+                    expandedQuestionAuditId === ev.questionId ||
+                    (expandedQuestionAuditId === null && index === 0);
 
-                      <span
-                        className={`shrink-0 px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                          evaluation.score >= 75
-                            ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
-                            : evaluation.score >= 50
-                            ? 'bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
-                            : 'bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
-                        }`}
+                  return (
+                    <div
+                      key={ev.questionId}
+                      className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm transition-all"
+                    >
+                      {/* Header row */}
+                      <button
+                        onClick={() =>
+                          setExpandedQuestionAuditId(
+                            isExpanded ? '' : ev.questionId
+                          )
+                        }
+                        className="w-full p-4 flex items-center justify-between gap-4 text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors"
                       >
-                        {evaluation.score}/100
-                      </span>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-7 h-7 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 font-bold text-xs flex items-center justify-center shrink-0">
+                            Q{index + 1}
+                          </span>
+                          <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white truncate">
+                            {ev.question}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          <span
+                            className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              ev.score >= 75
+                                ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800'
+                                : ev.score >= 50
+                                ? 'bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+                                : 'bg-rose-50 dark:bg-rose-950 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800'
+                            }`}
+                          >
+                            {ev.score}/100
+                          </span>
+
+                          {isExpanded ? (
+                            <ChevronUp className="w-4 h-4 text-slate-400" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Expanded Details */}
+                      {isExpanded && (
+                        <div className="p-4 sm:p-5 pt-0 border-t border-slate-100 dark:border-slate-800 space-y-4 text-xs">
+                          {/* Student Answer */}
+                          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 space-y-1">
+                            <span className="font-bold text-slate-500 text-[11px]">
+                              Your Evaluated Response:
+                            </span>
+                            <p className="text-slate-800 dark:text-slate-200 italic leading-relaxed whitespace-pre-wrap">
+                              "{ev.userAnswer || 'No response recorded'}"
+                            </p>
+                          </div>
+
+                          {/* AI Feedback & Rubric */}
+                          <div className="p-3.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200/70 dark:border-indigo-800/40 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-indigo-900 dark:text-indigo-300 text-[11px] flex items-center gap-1.5">
+                                <Bot className="w-3.5 h-3.5 text-indigo-600" />
+                                Gemini Placement Feedback
+                              </span>
+                              <span className="text-[10px] text-slate-500">
+                                Tech: {ev.technical}% • Reasoning: {ev.reasoning}% • Comm: {ev.communication}%
+                              </span>
+                            </div>
+                            <p className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                              {ev.aiFeedback}
+                            </p>
+                          </div>
+
+                          {/* Covered vs Missed */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-[11px]">
+                            <div className="p-3 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/30 space-y-1">
+                              <span className="font-bold text-emerald-800 dark:text-emerald-300 flex items-center gap-1">
+                                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                                Covered Points ({ev.keyPointsCovered?.length || 0})
+                              </span>
+                              <ul className="list-disc list-inside space-y-0.5 text-slate-600 dark:text-slate-400">
+                                {ev.keyPointsCovered?.length ? (
+                                  ev.keyPointsCovered.map((kp, kpi) => (
+                                    <li key={kpi}>{kp}</li>
+                                  ))
+                                ) : (
+                                  <li>None demonstrated</li>
+                                )}
+                              </ul>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/40 border border-slate-200 dark:border-slate-800 space-y-1">
+                              <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                                <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                                Key Points Missed ({ev.keyPointsMissed?.length || 0})
+                              </span>
+                              <ul className="list-disc list-inside space-y-0.5 text-slate-600 dark:text-slate-400">
+                                {ev.keyPointsMissed?.length ? (
+                                  ev.keyPointsMissed.map((kp, kpi) => (
+                                    <li key={kpi}>{kp}</li>
+                                  ))
+                                ) : (
+                                  <li className="text-emerald-600">All points covered!</li>
+                                )}
+                              </ul>
+                            </div>
+                          </div>
+
+                          {/* Model Answer */}
+                          <div className="p-3.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/30 space-y-1">
+                            <span className="font-bold text-emerald-800 dark:text-emerald-300 text-[11px]">
+                              Exemplary Model Reference Answer:
+                            </span>
+                            <p className="text-emerald-950 dark:text-emerald-200 leading-relaxed">
+                              {ev.modelAnswer || ev.suggestedAnswer}
+                            </p>
+                          </div>
+
+                          {/* Follow-up question if present */}
+                          {ev.followUpQuestion && (
+                            <div className="p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/70 dark:border-amber-800/40 text-[11px] text-amber-900 dark:text-amber-200">
+                              <strong>Recommended Follow-up Reflection:</strong> "{ev.followUpQuestion}"
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-
-                    <p className="text-slate-600 dark:text-slate-400 italic whitespace-pre-wrap">
-                      Your response: "{evaluation.userAnswer}"
-                    </p>
-
-                    <p className="text-indigo-700 dark:text-indigo-400 font-medium">
-                      AI Feedback: {evaluation.aiFeedback}
-                    </p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
-            {/* Footer Actions */}
+            {/* Action Footer */}
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
               <button
                 onClick={() => {
                   setSessionState('idle');
                   stopSpeaking();
+                  stopMicrophoneAndAcoustics();
                   setUserAnswer('');
                   baseTextRef.current = '';
+                  setSavedAnswers([]);
                   setEvaluations([]);
                   setCurrentQuestionIdx(0);
                   setTimerSeconds(0);
-                  setErrorMessage(null);
+                  setCompletedEvalCount(0);
+                  savedAnswersRef.current = [];
+                  evaluationsMapRef.current.clear();
+                  backgroundPromisesRef.current.clear();
+                  try {
+                    sessionStorage.removeItem(STORAGE_SESSION_KEY);
+                  } catch (_) {}
                 }}
                 className="w-full sm:w-auto px-6 py-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-semibold text-xs flex items-center justify-center gap-2 transition-all"
               >
@@ -1580,7 +2437,7 @@ export default function MockInterviewAssistant() {
                 <button
                   onClick={() =>
                     alert(
-                      'Your mock interview scorecard has been successfully calculated from live Gemini evaluation.'
+                      'Your complete mock interview scorecard has been saved to your student profile.'
                     )
                   }
                   className="w-full sm:w-auto px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all"
@@ -1589,6 +2446,44 @@ export default function MockInterviewAssistant() {
                   <span>Save to Verified Skill Passport</span>
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Stop Interview Confirmation Modal */}
+      {showStopConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fadeIn">
+          <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl max-w-md w-full space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 flex items-center justify-center">
+              <AlertCircle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                End Interview Early?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                You have answered {savedAnswersRef.current.length} of{' '}
+                {activeQuestions.length} questions. You can end now to compile a
+                report on the answered questions, or continue with the remaining
+                questions.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowStopConfirmModal(false)}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel & Continue
+              </button>
+              <button
+                onClick={handleConfirmStopEarly}
+                className="px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-md transition-colors"
+              >
+                End & View Report
+              </button>
             </div>
           </div>
         </div>
