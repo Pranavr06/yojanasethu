@@ -51,10 +51,10 @@ export default function Navbar() {
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="font-bold text-base tracking-tight text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                    PathPilot
+                    YojanaSethu
                   </span>
                   <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-                    Enterprise
+                    Autonomous
                   </span>
                 </div>
                 <p className="text-[10px] text-slate-500 dark:text-slate-400 hidden sm:block">

@@ -19,16 +19,27 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
-export default function AppShell({ children }: { children: React.ReactNode }) {
+interface AppShellProps {
+  children: React.ReactNode;
+  title?: string;
+  subtitle?: string;
+}
+
+export function AppShell({ children, title, subtitle }: AppShellProps) {
   const pathname = usePathname();
   const { user, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
 
-  const isLoginPage = pathname === '/login';
+  const isAuthPage =
+    pathname === '/login' ||
+    pathname === '/signup' ||
+    pathname === '/forgot-password' ||
+    pathname === '/reset-password' ||
+    pathname.startsWith('/auth/');
 
-  if (isLoginPage) {
+  if (isAuthPage) {
     return <main className="min-h-screen bg-slate-50 dark:bg-[#070B14]">{children}</main>;
   }
 
@@ -59,19 +70,25 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             {/* Top Desk Pill Badge (matching reference screenshot's BUS COORDINATOR DESK) */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800 shadow-sm">
-                {role === 'student' ? (
+                {role === 'admin' ? (
+                  <>
+                    <ShieldCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                    <span>SYSTEM GOVERNANCE DESK</span>
+                    <span className="text-slate-400 font-normal hidden sm:inline">• Administrative Control</span>
+                  </>
+                ) : role === 'student' ? (
                   <>
                     <GraduationCap className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                     <span>STUDENT CAREER DESK</span>
                     <span className="text-slate-400 font-normal hidden sm:inline">• NMAM Institute of Technology</span>
                   </>
-                ) : role === 'faculty' ? (
+                ) : role === 'faculty' || role === 'mentor' ? (
                   <>
                     <Building2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                     <span>FACULTY MENTOR DESK</span>
                     <span className="text-slate-400 font-normal hidden sm:inline">• Academic Oversight</span>
                   </>
-                ) : role === 'placement' ? (
+                ) : role === 'placement' || role === 'placements' ? (
                   <>
                     <Building2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                     <span>TRAINING & PLACEMENT (TPO)</span>
@@ -196,3 +213,5 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+
+export default AppShell;
