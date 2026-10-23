@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import CandidateCard from '@/components/CandidateCard';
+
 import { PlacementDrive, CandidateEvaluation } from '@/types';
 import {
   Briefcase,
@@ -18,6 +19,8 @@ export default function RecruiterPage() {
   const [ineligibleCandidates, setIneligibleCandidates] = useState<CandidateEvaluation[]>([]);
   const [activeTab, setActiveTab] = useState<'eligible' | 'ineligible'>('eligible');
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  
 
   // 1. Fetch Drives
   useEffect(() => {
@@ -61,6 +64,24 @@ export default function RecruiterPage() {
   }, [selectedDriveId]);
 
   const currentDrive = drives.find((d) => d.id === selectedDriveId) || drives[0];
+  const filterCandidates = (candidates: CandidateEvaluation[]) => {
+  const query = searchQuery.trim().toLowerCase();
+
+  if (!query) return candidates;
+
+  return candidates.filter((candidate) => {
+    const name = candidate.student.profile.full_name || '';
+    const usn = candidate.student.profile.usn || '';
+
+    return (
+      name.toLowerCase().includes(query) ||
+      usn.toLowerCase().includes(query)
+    );
+  });
+};
+
+const filteredEligibleCandidates = filterCandidates(eligibleCandidates);
+const filteredIneligibleCandidates = filterCandidates(ineligibleCandidates);
 
   return (
     <div className="space-y-6">
@@ -192,6 +213,33 @@ export default function RecruiterPage() {
         </div>
       </div>
 
+      
+{/* Candidate Search */}
+<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+  <label
+    htmlFor="recruiter-candidate-search"
+    className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300"
+  >
+    Search Candidates
+  </label>
+
+  <input
+    id="recruiter-candidate-search"
+    type="search"
+    value={searchQuery}
+    onChange={(e) => setSearchQuery(e.target.value)}
+    placeholder="Search by student name or USN..."
+    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-purple-500 dark:border-slate-700 dark:bg-slate-950 dark:text-white"
+  />
+
+  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+    Showing {activeTab === 'eligible'
+      ? filteredEligibleCandidates.length
+      : filteredIneligibleCandidates.length} candidates
+  </p>
+</div>
+
+
       {/* 4. Candidate Rankings Tabs: Eligible vs Ineligible */}
       <div id="candidate-rankings" className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
         <div className="flex items-center gap-2">
@@ -204,7 +252,7 @@ export default function RecruiterPage() {
             }`}
           >
             <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-            <span>Eligible Candidates ({eligibleCandidates.length})</span>
+            <span>Eligible Candidates ({filteredEligibleCandidates.length})</span>
           </button>
 
           <button
@@ -216,7 +264,7 @@ export default function RecruiterPage() {
             }`}
           >
             <XCircle className="w-4 h-4 text-rose-400" />
-            <span>Disqualified by Rules ({ineligibleCandidates.length})</span>
+            <span>Disqualified by Rules ({filteredIneligibleCandidates.length})</span>
           </button>
         </div>
 
@@ -237,21 +285,22 @@ export default function RecruiterPage() {
           <p className="text-sm font-medium text-slate-700 dark:text-slate-300">No recruitment drives found in database.</p>
         </div>
       ) : activeTab === 'eligible' ? (
-        eligibleCandidates.length === 0 ? (
+        
+          filteredEligibleCandidates.length === 0 ? (
           <div className="py-16 text-center bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
             <Users className="w-8 h-8 text-slate-400 mx-auto mb-2" />
             <p className="text-sm font-medium text-slate-700 dark:text-slate-300">No candidates currently meet all hard criteria.</p>
           </div>
         ) : (
           <div className="space-y-4">
-            {eligibleCandidates.map((candidate, idx) => (
+            {filteredEligibleCandidates.map((candidate, idx) => (
               <CandidateCard key={candidate.student.profile.id} candidate={candidate} rank={idx + 1} />
             ))}
           </div>
         )
       ) : (
         <div className="space-y-4">
-          {ineligibleCandidates.map((candidate, idx) => (
+          {filteredIneligibleCandidates.map((candidate, idx) => (
             <CandidateCard key={candidate.student.profile.id} candidate={candidate} rank={idx + 1} />
           ))}
         </div>

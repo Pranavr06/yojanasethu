@@ -12,7 +12,6 @@ import {
   PlacementStats,
   ApplicationStage,
   Department,
-  AcademicCorrectionRequest,
 } from '@/types';
 import { createClient } from '@supabase/supabase-js';
 
@@ -161,54 +160,31 @@ export async function dbGetFullStudent(studentIdOrUsn: string): Promise<FullStud
 /**
  * Fetch all students from database
  */
+
 export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
-    const { data: studentProfiles, error: pErr } = await supabase
+    const { data: studentProfiles, error } = await supabase
       .from('profiles')
-      .select('*, departments(code, name)')
+      .select('id')
       .eq('role', 'student');
 
-    if (pErr) throw pErr;
+    if (error) {
+      console.error('dbGetAllStudents error:', error);
+      throw error;
+    }
+
     if (!studentProfiles || studentProfiles.length === 0) return [];
 
-    const studentIds = studentProfiles.map((p) => p.id);
+    // Fetch full student profiles, including academic records and evidence.
+    const results = await Promise.all(
+      studentProfiles.map((student) => dbGetFullStudent(student.id))
+    );
 
-    // Parallel bulk query for academic_records and student_skill_passport
-    const [academicRes, skillsRes] = await Promise.all([
-      supabase.from('academic_records').select('*').in('student_id', studentIds),
-      supabase.from('student_skill_passport').select('*').in('student_id', studentIds),
-    ]);
-
-    if (academicRes.error) throw academicRes.error;
-    if (skillsRes.error) throw skillsRes.error;
-
-    const academicMap = new Map<string, AcademicRecord>();
-    (academicRes.data || []).forEach((ar) => academicMap.set(ar.student_id, ar));
-
-    const skillsMap = new Map<string, StudentSkillPassport[]>();
-    (skillsRes.data || []).forEach((sk) => {
-      const existing = skillsMap.get(sk.student_id) || [];
-      existing.push(sk);
-      skillsMap.set(sk.student_id, existing);
-    });
-
-    return studentProfiles.map((sp) => {
-      const profile: Profile = {
-        ...sp,
-        department_code: (sp as any).departments?.code || undefined,
-      };
-      return {
-        profile,
-        academic_record: academicMap.get(sp.id) || null,
-        semester_marks: [],
-        skills: skillsMap.get(sp.id) || [],
-        evidence_submissions: [],
-        roadmaps: [],
-        target_role: `${profile.department_code || 'Engineering'} Core Specialist`,
-      };
-    });
+    return results.filter(
+      (student): student is FullStudentProfile => student !== null
+    );
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
     throw err;
@@ -238,7 +214,7 @@ export async function dbSubmitEvidence(params: {
     skill_name,
     github_repo_url,
     description,
-    type = 'project',
+    type = 'github_repo',
     document_storage_path,
     credential_url,
   } = params;
@@ -367,7 +343,7 @@ export async function dbVerifySubmission(params: {
         const { data: updatedSkill } = await supabase
           .from('student_skill_passport')
           .update({
-            tier: 'faculty_verified',
+            tier: 'evidenced',
             verification_badge: true,
             evidence_source: `Faculty Review (${reviewer_name || 'Dr. K. Sharma'})`,
             updated_at: new Date().toISOString(),
@@ -383,7 +359,7 @@ export async function dbVerifySubmission(params: {
             student_id: updatedSub.student_id,
             skill_name: skillName,
             category: 'programming',
-            tier: 'faculty_verified',
+            tier: 'evidenced',
             confidence_score: 90,
             evidence_source: `Faculty Review (${reviewer_name || 'Dr. K. Sharma'})`,
             evidence_date: new Date().toISOString().split('T')[0],
@@ -780,283 +756,5 @@ export async function dbToggleRoadmap(taskId: string): Promise<Roadmap | null> {
   } catch (err) {
     console.error('dbToggleRoadmap error:', err);
     return null;
-  }
-}
-
-/**
- * Fetch all academic departments
- */
-export async function dbGetDepartments(): Promise<Department[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
-
-  try {
-    const { data, error } = await supabase
-      .from('departments')
-      .select('*')
-      .order('code', { ascending: true });
-
-    if (error || !data) return [];
-    return data as Department[];
-  } catch (err) {
-    console.error('dbGetDepartments error:', err);
-    return [];
-  }
-}
-
-/**
- * Student submits an Academic Correction Request to faculty mentor
- */
-export async function dbSubmitAcademicCorrectionRequest(params: {
-  student_id: string;
-  subject_or_semester: string;
-  claimed_value: string;
-  official_value: string;
-  reason: string;
-}): Promise<AcademicCorrectionRequest | null> {
-  if (!isSupabaseConfigured || !supabase) return null;
-
-  try {
-    const { data, error } = await supabase
-      .from('academic_correction_requests')
-      .insert({
-        student_id: params.student_id,
-        subject_or_semester: params.subject_or_semester,
-        claimed_value: params.claimed_value,
-        official_value: params.official_value,
-        reason: params.reason,
-        status: 'pending',
-      })
-      .select('*')
-      .single();
-
-    if (error || !data) {
-      console.error('dbSubmitAcademicCorrectionRequest error:', error);
-      return null;
-    }
-
-    return data as AcademicCorrectionRequest;
-  } catch (err) {
-    console.error('dbSubmitAcademicCorrectionRequest error:', err);
-    return null;
-  }
-}
-
-/**
- * Fetch Academic Correction Requests from students
- */
-export async function dbGetAcademicCorrectionRequests(status?: string): Promise<AcademicCorrectionRequest[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
-
-  try {
-    let query = supabase
-      .from('academic_correction_requests')
-      .select('*, profiles(full_name, usn, department_id, departments(code))')
-      .order('submitted_at', { ascending: false });
-
-    if (status && status !== 'all') {
-      query = query.eq('status', status);
-    }
-
-    const { data, error } = await query;
-    if (error || !data) return [];
-
-    return data.map((item: any) => ({
-      id: item.id,
-      student_id: item.student_id,
-      subject_or_semester: item.subject_or_semester,
-      claimed_value: item.claimed_value,
-      official_value: item.official_value,
-      reason: item.reason,
-      status: item.status,
-      submitted_at: item.submitted_at,
-      resolved_at: item.resolved_at,
-      admin_notes: item.admin_notes,
-      student_name: item.profiles?.full_name || 'Student',
-      student_usn: item.profiles?.usn || '',
-      student_branch: item.profiles?.departments?.code || 'ISE',
-    }));
-  } catch (err) {
-    console.error('dbGetAcademicCorrectionRequests error:', err);
-    return [];
-  }
-}
-
-/**
- * Resolve or reject Academic Correction Request
- */
-export async function dbResolveAcademicCorrectionRequest(params: {
-  id: string;
-  status: 'resolved' | 'rejected' | 'under_review';
-  admin_notes?: string;
-}): Promise<boolean> {
-  if (!isSupabaseConfigured || !supabase) return false;
-
-  const { id, status, admin_notes } = params;
-
-  try {
-    const { error } = await supabase
-      .from('academic_correction_requests')
-      .update({
-        status,
-        admin_notes: admin_notes || (status === 'resolved' ? 'Approved & Synced with Autonomous Exam Cell ERP.' : 'Claim declined after verification with exam cell records.'),
-        resolved_at: new Date().toISOString(),
-      })
-      .eq('id', id);
-
-    if (error) {
-      console.error('dbResolveAcademicCorrectionRequest error:', error);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    console.error('dbResolveAcademicCorrectionRequest error:', err);
-    return false;
-  }
-}
-
-/**
- * Fetch filtered submissions for Mentor Desk (pending, verified, rejected, or all)
- */
-export async function dbGetMentorSubmissions(options?: {
-  status?: string;
-  departmentCode?: string;
-}): Promise<EvidenceSubmission[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
-
-  const { status, departmentCode } = options || {};
-
-  try {
-    let query = supabase
-      .from('evidence_submissions')
-      .select('*')
-      .order('submitted_at', { ascending: false });
-
-    if (status && status !== 'all') {
-      query = query.eq('status', status);
-    }
-
-    const { data: rawSubmissions, error } = await query;
-    if (error || !rawSubmissions) return [];
-
-    const studentIds = [...new Set(rawSubmissions.map((s) => s.student_id))];
-    if (studentIds.length === 0) return [];
-
-    let profileQuery = supabase
-      .from('profiles')
-      .select('id, full_name, usn, department_id, departments(code)')
-      .in('id', studentIds);
-
-    const { data: studentProfiles } = await profileQuery;
-    const pMap = new Map((studentProfiles || []).map((p) => [p.id, p]));
-
-    const mapped = rawSubmissions.map((sub) => {
-      const student = pMap.get(sub.student_id);
-      return {
-        ...sub,
-        student_name: student?.full_name || 'Student',
-        student_usn: student?.usn || '',
-        student_branch: (student as any)?.departments?.code || 'ISE',
-      };
-    });
-
-    if (departmentCode && departmentCode !== 'ALL') {
-      return mapped.filter((s) => s.student_branch === departmentCode);
-    }
-
-    return mapped;
-  } catch (err) {
-    console.error('dbGetMentorSubmissions error:', err);
-    return [];
-  }
-}
-
-/**
- * Fetch Mentees list with live ERP & skill passport counts for Mentor Workspace
- */
-export async function dbGetMentorMentees(options?: {
-  departmentCode?: string;
-  search?: string;
-}): Promise<any[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
-
-  const { departmentCode, search } = options || {};
-
-  try {
-    let profileQuery = supabase
-      .from('profiles')
-      .select('id, full_name, email, usn, semester, graduation_year, github_username, departments(id, code, name)')
-      .eq('role', 'student')
-      .order('usn', { ascending: true });
-
-    const { data: profiles, error: pErr } = await profileQuery;
-    if (pErr || !profiles) return [];
-
-    const studentIds = profiles.map((p) => p.id);
-
-    // Fetch academic records
-    const { data: records } = await supabase
-      .from('academic_records')
-      .select('*')
-      .in('student_id', studentIds);
-    const rMap = new Map((records || []).map((r) => [r.student_id, r]));
-
-    // Fetch verified skills counts
-    const { data: skills } = await supabase
-      .from('student_skill_passport')
-      .select('student_id, verification_badge')
-      .in('student_id', studentIds);
-
-    const badgeCountMap = new Map<string, { verified: number; total: number }>();
-    (skills || []).forEach((sk) => {
-      const cur = badgeCountMap.get(sk.student_id) || { verified: 0, total: 0 };
-      cur.total += 1;
-      if (sk.verification_badge) cur.verified += 1;
-      badgeCountMap.set(sk.student_id, cur);
-    });
-
-    let result = profiles.map((p) => {
-      const ar = rMap.get(p.id);
-      const sc = badgeCountMap.get(p.id) || { verified: 0, total: 0 };
-      const cgpa = ar?.cgpa || 0;
-      const backlogs = ar?.active_backlogs || 0;
-      const isPlacementReady = cgpa >= 7.0 && backlogs === 0;
-
-      return {
-        id: p.id,
-        full_name: p.full_name,
-        email: p.email,
-        usn: p.usn,
-        semester: p.semester || 6,
-        department_code: (p as any).departments?.code || 'ISE',
-        department_name: (p as any).departments?.name || 'Department',
-        cgpa,
-        active_backlogs: backlogs,
-        total_earned_credits: ar?.total_earned_credits || 120,
-        is_verified_by_exam_cell: ar?.is_verified_by_exam_cell ?? true,
-        verified_skills_count: sc.verified,
-        total_skills_count: sc.total,
-        is_placement_ready: isPlacementReady,
-        github_username: p.github_username,
-      };
-    });
-
-    if (departmentCode && departmentCode !== 'ALL') {
-      result = result.filter((s) => s.department_code === departmentCode);
-    }
-
-    if (search && search.trim()) {
-      const q = search.trim().toLowerCase();
-      result = result.filter(
-        (s) =>
-          s.full_name.toLowerCase().includes(q) ||
-          s.usn.toLowerCase().includes(q) ||
-          s.department_code.toLowerCase().includes(q)
-      );
-    }
-
-    return result;
-  } catch (err) {
-    console.error('dbGetMentorMentees error:', err);
-    return [];
   }
 }
