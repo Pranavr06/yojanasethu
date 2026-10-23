@@ -124,7 +124,7 @@ export default function StudentDashboard() {
               className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-indigo-700 shadow-md hover:bg-indigo-50 transition-all"
             >
               <FileText className="w-4 h-4" />
-              <span>Build ATS Resume</span>
+              <span>AI Resume Builder & ATS Analyzer</span>
             </Link>
 
             <Link
@@ -423,10 +423,10 @@ export default function StudentDashboard() {
                 </span>
               </div>
               <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                Resume Builder
+                AI Resume Builder & ATS Analyzer
               </h3>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                Build ATS-optimized resumes with real-time paper preview, auto-fill from ERP records, and PDF export.
+                Upload PDF/DOCX or sync verified ERP records. Run live AI ATS audit, get actionable gap suggestions, and export clean PDF resumes.
               </p>
             </div>
             <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-rose-600 dark:text-rose-400 font-semibold">
