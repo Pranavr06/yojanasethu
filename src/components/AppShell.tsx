@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
+import NotificationBell from '@/components/NotificationBell';
 import { useAuth } from '@/lib/authContext';
 import { useTheme } from '@/lib/themeContext';
 import {
@@ -111,8 +112,10 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
             </div>
           </div>
 
-          {/* Right Controls: Theme Switcher & User Profile Menu */}
+          {/* Right Controls: Notification Bell, Theme Switcher & User Profile Menu */}
           <div className="flex items-center gap-2.5">
+            <NotificationBell />
+
             {/* Theme Toggle Button */}
             <button
               onClick={toggleTheme}

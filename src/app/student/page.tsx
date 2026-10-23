@@ -19,6 +19,7 @@ import {
   Globe,
   ArrowRight,
   Sparkles,
+  Briefcase,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -309,6 +310,35 @@ export default function StudentPage() {
             </h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
               Dedicated page with weekly action items, interactive learning resources, and progress checkmarks for your target job role.
+            </p>
+          </Link>
+
+          {/* Card 5: Placement Transparency Hub */}
+          <Link
+            href="/student/placement-hub"
+            className="p-5 rounded-2xl glass-card border border-indigo-200 dark:border-indigo-800/80 hover:border-indigo-500 hover:shadow-xl transition-all group block sm:col-span-2 bg-gradient-to-br from-indigo-50/40 via-white to-purple-50/30 dark:from-indigo-950/20 dark:via-slate-900 dark:to-purple-950/20"
+          >
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <div className="p-3 rounded-xl bg-indigo-600 text-white shadow-md shadow-indigo-600/25">
+                <Briefcase className="w-6 h-6" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-500/30 flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>All Batches (2025 - 2028)</span>
+                </span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30">
+                  Live Placement Feeds
+                </span>
+              </div>
+            </div>
+
+            <h4 className="text-base font-extrabold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center justify-between">
+              <span>Campus Placement Transparency Hub & Early Awareness Desk</span>
+              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform text-indigo-500" />
+            </h4>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1.5 leading-relaxed">
+              Explore official company visits, pre-placement talks, hiring criteria, package CTC breakdowns, and real-time advisory eligibility. Early preparation roadmap and benchmarks for 1st, 2nd, 3rd, and 4th year students.
             </p>
           </Link>
         </div>
