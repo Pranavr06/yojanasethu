@@ -12,6 +12,7 @@ import {
   PlacementStats,
   ApplicationStage,
   Department,
+  AcademicCorrectionRequest,
 } from '@/types';
 import { createClient } from '@supabase/supabase-js';
 
@@ -335,7 +336,7 @@ export async function dbVerifySubmission(params: {
         const { data: updatedSkill } = await supabase
           .from('student_skill_passport')
           .update({
-            tier: 'evidenced',
+            tier: 'faculty_verified',
             verification_badge: true,
             evidence_source: `Faculty Review (${reviewer_name || 'Dr. K. Sharma'})`,
             updated_at: new Date().toISOString(),
@@ -351,7 +352,7 @@ export async function dbVerifySubmission(params: {
             student_id: updatedSub.student_id,
             skill_name: skillName,
             category: 'programming',
-            tier: 'evidenced',
+            tier: 'faculty_verified',
             confidence_score: 90,
             evidence_source: `Faculty Review (${reviewer_name || 'Dr. K. Sharma'})`,
             evidence_date: new Date().toISOString().split('T')[0],
@@ -748,5 +749,245 @@ export async function dbToggleRoadmap(taskId: string): Promise<Roadmap | null> {
   } catch (err) {
     console.error('dbToggleRoadmap error:', err);
     return null;
+  }
+}
+
+/**
+ * Fetch all academic departments
+ */
+export async function dbGetDepartments(): Promise<Department[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('departments')
+      .select('*')
+      .order('code', { ascending: true });
+
+    if (error || !data) return [];
+    return data as Department[];
+  } catch (err) {
+    console.error('dbGetDepartments error:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch Academic Correction Requests from students
+ */
+export async function dbGetAcademicCorrectionRequests(status?: string): Promise<AcademicCorrectionRequest[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  try {
+    let query = supabase
+      .from('academic_correction_requests')
+      .select('*, profiles(full_name, usn, department_id, departments(code))')
+      .order('submitted_at', { ascending: false });
+
+    if (status && status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query;
+    if (error || !data) return [];
+
+    return data.map((item: any) => ({
+      id: item.id,
+      student_id: item.student_id,
+      subject_or_semester: item.subject_or_semester,
+      claimed_value: item.claimed_value,
+      official_value: item.official_value,
+      reason: item.reason,
+      status: item.status,
+      submitted_at: item.submitted_at,
+      resolved_at: item.resolved_at,
+      admin_notes: item.admin_notes,
+      student_name: item.profiles?.full_name || 'Student',
+      student_usn: item.profiles?.usn || '',
+      student_branch: item.profiles?.departments?.code || 'ISE',
+    }));
+  } catch (err) {
+    console.error('dbGetAcademicCorrectionRequests error:', err);
+    return [];
+  }
+}
+
+/**
+ * Resolve or reject Academic Correction Request
+ */
+export async function dbResolveAcademicCorrectionRequest(params: {
+  id: string;
+  status: 'resolved' | 'rejected' | 'under_review';
+  admin_notes?: string;
+}): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) return false;
+
+  const { id, status, admin_notes } = params;
+
+  try {
+    const { error } = await supabase
+      .from('academic_correction_requests')
+      .update({
+        status,
+        admin_notes: admin_notes || (status === 'resolved' ? 'Approved & Synced with Autonomous Exam Cell ERP.' : 'Claim declined after verification with exam cell records.'),
+        resolved_at: new Date().toISOString(),
+      })
+      .eq('id', id);
+
+    if (error) {
+      console.error('dbResolveAcademicCorrectionRequest error:', error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error('dbResolveAcademicCorrectionRequest error:', err);
+    return false;
+  }
+}
+
+/**
+ * Fetch filtered submissions for Mentor Desk (pending, verified, rejected, or all)
+ */
+export async function dbGetMentorSubmissions(options?: {
+  status?: string;
+  departmentCode?: string;
+}): Promise<EvidenceSubmission[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  const { status, departmentCode } = options || {};
+
+  try {
+    let query = supabase
+      .from('evidence_submissions')
+      .select('*')
+      .order('submitted_at', { ascending: false });
+
+    if (status && status !== 'all') {
+      query = query.eq('status', status);
+    }
+
+    const { data: rawSubmissions, error } = await query;
+    if (error || !rawSubmissions) return [];
+
+    const studentIds = [...new Set(rawSubmissions.map((s) => s.student_id))];
+    if (studentIds.length === 0) return [];
+
+    let profileQuery = supabase
+      .from('profiles')
+      .select('id, full_name, usn, department_id, departments(code)')
+      .in('id', studentIds);
+
+    const { data: studentProfiles } = await profileQuery;
+    const pMap = new Map((studentProfiles || []).map((p) => [p.id, p]));
+
+    const mapped = rawSubmissions.map((sub) => {
+      const student = pMap.get(sub.student_id);
+      return {
+        ...sub,
+        student_name: student?.full_name || 'Student',
+        student_usn: student?.usn || '',
+        student_branch: (student as any)?.departments?.code || 'ISE',
+      };
+    });
+
+    if (departmentCode && departmentCode !== 'ALL') {
+      return mapped.filter((s) => s.student_branch === departmentCode);
+    }
+
+    return mapped;
+  } catch (err) {
+    console.error('dbGetMentorSubmissions error:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch Mentees list with live ERP & skill passport counts for Mentor Workspace
+ */
+export async function dbGetMentorMentees(options?: {
+  departmentCode?: string;
+  search?: string;
+}): Promise<any[]> {
+  if (!isSupabaseConfigured || !supabase) return [];
+
+  const { departmentCode, search } = options || {};
+
+  try {
+    let profileQuery = supabase
+      .from('profiles')
+      .select('id, full_name, email, usn, semester, graduation_year, github_username, departments(id, code, name)')
+      .eq('role', 'student')
+      .order('usn', { ascending: true });
+
+    const { data: profiles, error: pErr } = await profileQuery;
+    if (pErr || !profiles) return [];
+
+    const studentIds = profiles.map((p) => p.id);
+
+    // Fetch academic records
+    const { data: records } = await supabase
+      .from('academic_records')
+      .select('*')
+      .in('student_id', studentIds);
+    const rMap = new Map((records || []).map((r) => [r.student_id, r]));
+
+    // Fetch verified skills counts
+    const { data: skills } = await supabase
+      .from('student_skill_passport')
+      .select('student_id, verification_badge')
+      .in('student_id', studentIds);
+
+    const badgeCountMap = new Map<string, { verified: number; total: number }>();
+    (skills || []).forEach((sk) => {
+      const cur = badgeCountMap.get(sk.student_id) || { verified: 0, total: 0 };
+      cur.total += 1;
+      if (sk.verification_badge) cur.verified += 1;
+      badgeCountMap.set(sk.student_id, cur);
+    });
+
+    let result = profiles.map((p) => {
+      const ar = rMap.get(p.id);
+      const sc = badgeCountMap.get(p.id) || { verified: 0, total: 0 };
+      const cgpa = ar?.cgpa || 0;
+      const backlogs = ar?.active_backlogs || 0;
+      const isPlacementReady = cgpa >= 7.0 && backlogs === 0;
+
+      return {
+        id: p.id,
+        full_name: p.full_name,
+        email: p.email,
+        usn: p.usn,
+        semester: p.semester || 6,
+        department_code: (p as any).departments?.code || 'ISE',
+        department_name: (p as any).departments?.name || 'Department',
+        cgpa,
+        active_backlogs: backlogs,
+        total_earned_credits: ar?.total_earned_credits || 120,
+        is_verified_by_exam_cell: ar?.is_verified_by_exam_cell ?? true,
+        verified_skills_count: sc.verified,
+        total_skills_count: sc.total,
+        is_placement_ready: isPlacementReady,
+        github_username: p.github_username,
+      };
+    });
+
+    if (departmentCode && departmentCode !== 'ALL') {
+      result = result.filter((s) => s.department_code === departmentCode);
+    }
+
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.full_name.toLowerCase().includes(q) ||
+          s.usn.toLowerCase().includes(q) ||
+          s.department_code.toLowerCase().includes(q)
+      );
+    }
+
+    return result;
+  } catch (err) {
+    console.error('dbGetMentorMentees error:', err);
+    return [];
   }
 }
