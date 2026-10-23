@@ -1,4 +1,4 @@
-﻿import {
+import {
   Profile,
   AcademicRecord,
   SemesterMark,
@@ -171,19 +171,61 @@ export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
-    const { data: studentProfiles, error } = await supabase
+    // 1. Single query: Fetch all student profiles with department codes
+    const { data: studentProfiles, error: profileErr } = await supabase
       .from('profiles')
       .select('*, departments(code, name)')
       .eq('role', 'student');
 
-    if (error || !studentProfiles || studentProfiles.length === 0) return [];
+    if (profileErr || !studentProfiles || studentProfiles.length === 0) return [];
 
-    const fullList: FullStudentProfile[] = [];
-    for (const sp of studentProfiles) {
-      const full = await dbGetFullStudent(sp.id);
-      if (full) fullList.push(full);
-    }
-    return fullList;
+    const studentIds = studentProfiles.map((p: any) => p.id);
+
+    // 2. Parallel batch queries for all related student tables (3 fast queries total)
+    const [academicRes, skillsRes, submissionsRes] = await Promise.all([
+      supabase.from('academic_records').select('*').in('student_id', studentIds),
+      supabase.from('student_skill_passport').select('*').in('student_id', studentIds),
+      supabase.from('evidence_submissions').select('*').in('student_id', studentIds),
+    ]);
+
+    // 3. Hash map lookups for O(1) in-memory assembly
+    const arMap = new Map<string, AcademicRecord>();
+    (academicRes.data || []).forEach((ar: AcademicRecord) => {
+      arMap.set(ar.student_id, ar);
+    });
+
+    const skillsMap = new Map<string, StudentSkillPassport[]>();
+    (skillsRes.data || []).forEach((sk: StudentSkillPassport) => {
+      if (!skillsMap.has(sk.student_id)) skillsMap.set(sk.student_id, []);
+      skillsMap.get(sk.student_id)!.push(sk);
+    });
+
+    const submissionsMap = new Map<string, EvidenceSubmission[]>();
+    (submissionsRes.data || []).forEach((sub: EvidenceSubmission) => {
+      if (!submissionsMap.has(sub.student_id)) submissionsMap.set(sub.student_id, []);
+      submissionsMap.get(sub.student_id)!.push(sub);
+    });
+
+    // 4. Assemble FullStudentProfile array in memory
+    return studentProfiles.map((sp: any) => {
+      const profile: Profile = {
+        ...sp,
+        department_code: sp.departments?.code || undefined,
+      };
+      const academic_record = arMap.get(sp.id) || null;
+      const skills = skillsMap.get(sp.id) || [];
+      const evidence_submissions = submissionsMap.get(sp.id) || [];
+
+      return {
+        profile,
+        academic_record,
+        semester_marks: [],
+        skills,
+        evidence_submissions,
+        roadmaps: [],
+        target_role: `${profile.department_code || 'Engineering'} Core Specialist`,
+      };
+    });
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
     return [];
@@ -282,6 +324,7 @@ export async function dbGetPendingSubmissions(): Promise<EvidenceSubmission[]> {
         ...sub,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_branch: (student as any)?.departments?.code || 'ISE',
       };
     });
@@ -520,7 +563,7 @@ export async function dbGetDriveApplications(driveId?: string): Promise<any[]> {
     const driveIds = [...new Set(rawApps.map((a) => a.drive_id))];
 
     const [{ data: profs }, { data: recs }, { data: drvs }, { data: passports }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, usn, department_id, departments(code)').in('id', studentIds),
+      supabase.from('profiles').select('id, full_name, usn, email, department_id, departments(code)').in('id', studentIds),
       supabase.from('academic_records').select('student_id, cgpa, active_backlogs, is_verified_by_exam_cell').in('student_id', studentIds),
       supabase.from('placement_drives').select('id, role_title, company_id, companies(name)').in('id', driveIds),
       supabase.from('student_skill_passport').select('student_id, verification_badge').in('student_id', studentIds),
@@ -538,8 +581,14 @@ export async function dbGetDriveApplications(driveId?: string): Promise<any[]> {
 
       return {
         ...app,
+        stage: app.stage === 'interview_round_1'
+          ? (app.notes?.includes('[STAGE: Interview Completed]') ? 'interview_completed' : 'interview_scheduled')
+          : (app.stage === 'offered' || app.stage === 'placed' || app.stage === 'accepted')
+          ? 'selected'
+          : app.stage,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_department: (student as any)?.departments?.code || 'ISE',
         cgpa: ar?.cgpa || 0,
         active_backlogs: ar?.active_backlogs || 0,
@@ -923,6 +972,7 @@ export async function dbGetMentorSubmissions(options?: {
         ...sub,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_branch: (student as any)?.departments?.code || 'ISE',
       };
     });
