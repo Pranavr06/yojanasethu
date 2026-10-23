@@ -53,7 +53,7 @@ export default function ResetPasswordPage() {
             // Also listen to hash / auth state change event PASSWORD_RECOVERY
             const {
               data: { subscription },
-            } = supabase.auth.onAuthStateChange((event, newSession) => {
+            } = supabase.auth.onAuthStateChange((event: any, newSession: any) => {
               if (event === 'PASSWORD_RECOVERY' || newSession) {
                 setHasValidSession(true);
               }

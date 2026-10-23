@@ -4,6 +4,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { PlacementStats, PlacementDrive, ApplicationStage } from '@/types';
 import PlacementCharts from '@/components/PlacementCharts';
 import EligibleStudentModal from '@/components/EligibleStudentModal';
+import AnnouncementFormModal from '@/components/AnnouncementFormModal';
+import Link from 'next/link';
 import {
   Briefcase,
   Building2,
@@ -43,6 +45,7 @@ export default function PlacementDashboardPage() {
 
   // Enhancement 3: Eligible Student Viewer State
   const [auditDrive, setAuditDrive] = useState<PlacementDrive | null>(null);
+  const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
 
   // Form states for creating new drive
   const [newCompany, setNewCompany] = useState('');
@@ -384,20 +387,39 @@ export default function PlacementDashboardPage() {
 
           <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0">
             <button
-              onClick={() => setIsCreateModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 hover:from-indigo-400 hover:to-sky-400 text-white text-xs font-bold shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.02]"
+              onClick={() => setIsAnnouncementModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-indigo-500 to-sky-500 hover:from-indigo-500 hover:to-sky-400 text-white text-xs font-bold shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.02]"
             >
-              <Plus className="w-4 h-4" />
-              <span>Post New Campus Drive</span>
+              <Sparkles className="w-4 h-4 text-amber-300" />
+              <span>Publish Placement Announcement</span>
             </button>
 
-            <button
-              onClick={fetchPlacementData}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/20 transition-all backdrop-blur-md"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              <span>Sync Placement Data</span>
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsCreateModalOpen(true)}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-semibold border border-white/20 transition-all backdrop-blur-md"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Post Drive</span>
+              </button>
+
+              <Link
+                href="/student/placement-hub"
+                className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/20 transition-all backdrop-blur-md"
+                title="View Student Transparency Hub as viewed by all academic batches"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Hub View</span>
+              </Link>
+
+              <button
+                onClick={fetchPlacementData}
+                className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-all backdrop-blur-md"
+                title="Refresh placement data"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -997,6 +1019,13 @@ export default function PlacementDashboardPage() {
         isOpen={Boolean(auditDrive)}
         onClose={() => setAuditDrive(null)}
         drive={auditDrive}
+      />
+
+      {/* Placement Transparency Hub: Announcement Creator Modal */}
+      <AnnouncementFormModal
+        isOpen={isAnnouncementModalOpen}
+        onClose={() => setIsAnnouncementModalOpen(false)}
+        onSaved={fetchPlacementData}
       />
     </div>
   );

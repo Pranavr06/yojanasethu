@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/authContext';
-import { ROLE_DASHBOARDS } from '@/lib/rbac';
+import { ROLE_DASHBOARDS, normalizeRole } from '@/lib/rbac';
 import { Loader2 } from 'lucide-react';
 
 export default function RootPage() {
@@ -15,8 +15,11 @@ export default function RootPage() {
       if (!user) {
         router.replace('/login');
       } else {
-        const dest = (role && ROLE_DASHBOARDS[role]) || '/student/dashboard';
-        router.replace(dest);
+        const resolved =
+          (role && ROLE_DASHBOARDS[role]) ||
+          (user?.role && ROLE_DASHBOARDS[normalizeRole(user.role) || 'student']) ||
+          '/student/dashboard';
+        router.replace(resolved);
       }
     }
   }, [user, role, loading, router]);

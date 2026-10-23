@@ -1,336 +1,510 @@
-'use client';
 
-import React, { useEffect, useState } from 'react';
-import { useAuth } from '@/lib/authContext';
-import { FullStudentProfile } from '@/types';
-import EvidenceModal from '@/components/EvidenceModal';
-import ResumeAnalyzerModal from '@/components/ResumeAnalyzerModal';
+"use client";
+
+import { useState } from "react";
 import {
-  ShieldCheck,
-  GraduationCap,
-  Calculator,
-  Calendar,
-  UploadCloud,
-  FileSearch,
-  ExternalLink,
-  CheckCircle2,
-  Clock,
-  Github,
-  Globe,
-  ArrowRight,
-  Sparkles,
-} from 'lucide-react';
-import Link from 'next/link';
+  LayoutDashboard, FileText, BrainCircuit, Code2, Award,
+  BriefcaseBusiness, GraduationCap, Menu, X, Upload,
+  Trash2, Search, Target, BookOpen, Sparkles, CheckCircle2,
+  ArrowRight, Download, Briefcase, ShieldCheck, Calculator,
+  Calendar, ExternalLink,
+} from "lucide-react";
+import Link from "next/link";
+import { useAuth } from "@/lib/authContext";
 
-export default function StudentPage() {
+const skills = [
+  { name: "Python", level: 80 },
+  { name: "DSA", level: 55 },
+  { name: "SQL", level: 70 },
+  { name: "Machine Learning", level: 40 },
+];
+
+const companies = [
+  { name: "Infosys", role: "Systems Engineer", year: "2026", package: "Sample: 3.6 LPA" },
+  { name: "TCS", role: "Graduate Engineer Trainee", year: "2026", package: "Sample: 4.5 LPA" },
+  { name: "Accenture", role: "Software Engineer", year: "2025", package: "Sample: 4.5 LPA" },
+];
+
+const topics = [
+  "Variables and data types",
+  "Conditions and loops",
+  "Functions",
+  "Arrays and strings",
+  "Linked lists",
+  "Stacks and queues",
+  "Trees and graphs",
+  "Sorting and searching",
+];
+
+const nav = [
+  { id: "overview", label: "Dashboard", icon: LayoutDashboard },
+  { id: "resume", label: "Resume Builder", icon: FileText },
+  { id: "coach", label: "AI Career Coach", icon: BrainCircuit },
+  { id: "learn", label: "Learn Programming", icon: BookOpen },
+  { id: "dsa", label: "DSA Tracker", icon: Code2 },
+  { id: "certificates", label: "Certificates", icon: Award },
+  { id: "placements", label: "Placement History", icon: BriefcaseBusiness },
+];
+
+export default function StudentDashboard() {
   const { user } = useAuth();
-  const [student, setStudent] = useState<FullStudentProfile | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [isEvidenceModalOpen, setIsEvidenceModalOpen] = useState(false);
-  const [isAnalyzerModalOpen, setIsAnalyzerModalOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [active, setActive] = useState("overview");
+  const [search, setSearch] = useState("");
+  const [year, setYear] = useState("all");
+  const [language, setLanguage] = useState("Python");
+  const [done, setDone] = useState<string[]>([]);
+  const [certificates, setCertificates] = useState<File[]>([]);
+  const [targetRole, setTargetRole] = useState("AI Engineer");
+  const [resume, setResume] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    education: "",
+    skills: "",
+    projects: "",
+    objective: "",
+  });
 
-  const fetchStudentData = async () => {
-    try {
-      const studentIdentifier = user?.usn || user?.id || user?.email;
-      if (!studentIdentifier) {
-        setLoading(false);
-        setStudent(null);
-        return;
-      }
-      const param = studentIdentifier.includes('@')
-        ? `id=${encodeURIComponent(studentIdentifier)}`
-        : `usn=${encodeURIComponent(studentIdentifier)}`;
-      const res = await fetch(`/api/students?${param}`);
-      const data = await res.json();
-      if (data.student) {
-        setStudent(data.student);
-      } else {
-        setStudent(null);
-      }
-    } catch (e) {
-      console.error(e);
-      setStudent(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchStudentData();
-  }, [user]);
-
-  if (loading) {
-    return (
-      <div className="py-20 text-center">
-        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-        <p className="text-xs text-slate-500 dark:text-slate-400">Loading student passport from database...</p>
-      </div>
-    );
+  function goTo(id: string) {
+    setActive(id);
+    setMenuOpen(false);
+    document.getElementById(id)?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
   }
 
-  if (!student) {
-    return (
-      <div className="py-20 text-center bg-white dark:bg-slate-900/60 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-8">
-        <p className="text-sm font-semibold text-slate-800 dark:text-slate-200 mb-1">
-          No student record found in database.
-        </p>
-        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-          Please verify your institutional email or sign in with an account seeded in the database.
-        </p>
-      </div>
-    );
-  }
+  const filteredCompanies = companies.filter((company) => {
+    const matchesSearch = `${company.name} ${company.role}`
+      .toLowerCase()
+      .includes(search.toLowerCase());
+    return matchesSearch && (year === "all" || company.year === year);
+  });
 
-  const { profile, academic_record, skills, roadmaps, target_role } = student;
-  const verifiedCount = skills.filter((s) => s.verification_badge).length;
-  const completedRoadmapTasks = roadmaps.filter((r) => r.is_completed).length;
+  const inputClass =
+    "mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-indigo-500";
+  const cardClass =
+    "rounded-2xl border border-slate-200 bg-white p-5 sm:p-6";
 
   return (
-    <div className="space-y-6">
-      {/* 1. Student Hero Banner */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1E1B4B] via-[#0F172A] to-[#1E1B4B] border border-indigo-500/30 p-6 md:p-8 text-white shadow-xl">
-        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30">
-              <span>STUDENT COORDINATOR DESK</span>
-              <span>•</span>
-              <span>{profile.usn ? `${profile.usn} • ` : ''}NMAMIT Autonomous ERP</span>
-            </div>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      {menuOpen && (
+        <button
+          aria-label="Close menu"
+          onClick={() => setMenuOpen(false)}
+          className="fixed inset-0 z-40 bg-black/40 md:hidden"
+        />
+      )}
 
-            <h1 className="text-2xl md:text-3xl font-extrabold tracking-tight text-white">
-              {profile.full_name}
-            </h1>
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-white transition-transform md:translate-x-0 ${
+          menuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="border-b p-5">
+          <h1 className="text-xl font-extrabold text-indigo-700">
+            YojanaSethu
+          </h1>
+          <p className="mt-1 text-xs text-slate-500">Student Career Portal</p>
+          <button
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+            className="absolute right-3 top-4 md:hidden"
+          >
+            <X size={20} />
+          </button>
+        </div>
 
-            <p className="text-xs md:text-sm text-slate-300 max-w-2xl leading-relaxed">
-              {profile.department_code || 'Engineering'} • Semester {profile.semester || 6} • Batch of {profile.graduation_year || 2026}. Verified academic records synced with NMAMIT Autonomous Examination Cell. Target Role:{' '}
-              <span className="text-indigo-400 font-bold">{target_role}</span>
+        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
+          {nav.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                onClick={() => goTo(item.id)}
+                className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm font-medium ${
+                  active === item.id
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                <Icon size={19} />
+                {item.label}
+              </button>
+            );
+          })}
+
+          <div className="mt-5 border-t pt-4">
+            <p className="px-3 pb-2 text-xs font-bold uppercase text-slate-400">
+              Existing modules
             </p>
-
-            <div className="flex items-center gap-4 text-xs text-slate-300 pt-2 flex-wrap">
-              {profile.github_username && (
-                <a
-                  href={`https://github.com/${profile.github_username}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors"
-                >
-                  <Github className="w-3.5 h-3.5" />
-                  <span>github/{profile.github_username}</span>
-                </a>
-              )}
-              {profile.portfolio_url && (
-                <a
-                  href={profile.portfolio_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 text-slate-300 hover:text-white transition-colors"
-                >
-                  <Globe className="w-3.5 h-3.5" />
-                  <span>Portfolio</span>
-                </a>
-              )}
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-[11px] font-semibold">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Exam Cell Verified</span>
-              </div>
-            </div>
+            <a className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/academic-truth">
+              Academic Records
+            </a>
+            <a className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/cgpa-calculator">
+              CGPA Calculator
+            </a>
+            <a className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/roadmap">
+              Career Roadmap
+            </a>
+            <a className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/skill-passport">
+              Skill Passport
+            </a>
           </div>
+        </nav>
 
-          {/* Quick Action Triggers */}
-          <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0">
+        <div className="border-t p-4 text-sm">
+          <p className="font-semibold">Student Account</p>
+          <p className="mt-1 text-xs text-slate-500">Demo workspace</p>
+        </div>
+      </aside>
+
+      <main className="min-h-screen md:ml-64">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-white/95 px-4 sm:px-8">
+          <div className="flex items-center gap-3">
             <button
-              onClick={() => setIsEvidenceModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-sky-500 hover:from-indigo-400 hover:to-sky-400 text-white text-xs font-bold shadow-lg shadow-indigo-500/25 transition-all hover:scale-[1.02]"
+              aria-label="Open menu"
+              onClick={() => setMenuOpen(true)}
+              className="md:hidden"
             >
-              <UploadCloud className="w-4 h-4" />
-              <span>Submit Proof (Repo/Cert)</span>
+              <Menu />
             </button>
+            <h2 className="font-bold">My Career Dashboard</h2>
+          </div>
+          <span className="rounded-full bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">
+            Demo mode
+          </span>
+        </header>
 
+        <div className="mx-auto max-w-7xl space-y-8 p-4 sm:p-8">
+          <section id="overview" className="scroll-mt-24 rounded-3xl bg-gradient-to-r from-indigo-700 to-violet-600 p-7 text-white sm:p-10">
+            <div className="flex items-center gap-2 text-sm text-indigo-100">
+              <Sparkles size={17} /> Your student career workspace
+            </div>
+            <h2 className="mt-4 max-w-2xl text-3xl font-extrabold sm:text-4xl">
+              Build skills. Prepare for placements. Shape your future.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-indigo-100">
+              Manage your resume, track programming practice, organize
+              certificates and explore placement opportunities in one place.
+            </p>
             <button
-              onClick={() => setIsAnalyzerModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold border border-white/20 transition-all backdrop-blur-md"
+              onClick={() => goTo("resume")}
+              className="mt-6 rounded-xl bg-white px-5 py-3 text-sm font-bold text-indigo-700"
             >
-              <FileSearch className="w-4 h-4 text-purple-300" />
-              <span>AI Resume Auditor</span>
+              Build my resume →
             </button>
-          </div>
-        </div>
-      </div>
+          </section>
 
-      {/* 2. Executive Metric Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-400">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
-            VERIFIED CGPA
-          </span>
-          <div className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white">
-            {academic_record ? academic_record.cgpa.toFixed(2) : 'N/A'}
-          </div>
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 block">
-            {academic_record?.active_backlogs === 0
-              ? '0 Active Backlogs • Exam Cell'
-              : `${academic_record?.active_backlogs} Active Backlog(s)`}
-          </span>
-        </div>
+          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              { label: "Career readiness", value: "Not assessed", icon: Target },
+              { label: "Skills to develop", value: "4", icon: BrainCircuit },
+              { label: "Sample company drives", value: "3", icon: BriefcaseBusiness },
+              { label: "Certificates added", value: String(certificates.length), icon: Award },
+            ].map((stat) => {
+              const Icon = stat.icon;
+              return (
+                <div key={stat.label} className={cardClass}>
+                  <Icon className="text-indigo-600" size={23} />
+                  <p className="mt-4 text-sm text-slate-500">{stat.label}</p>
+                  <p className="mt-2 text-2xl font-extrabold">{stat.value}</p>
+                </div>
+              );
+            })}
+          </section>
 
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-400">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
-            EARNED CREDITS
-          </span>
-          <div className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white">
-            {academic_record ? academic_record.total_earned_credits : 0}{' '}
-            <span className="text-xs font-normal text-slate-400">/ 160</span>
-          </div>
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 block">
-            Exam Cell Verified
-          </span>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-400">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
-            SKILL PASSPORT
-          </span>
-          <div className="text-2xl md:text-3xl font-extrabold text-indigo-600 dark:text-indigo-400">
-            {verifiedCount}{' '}
-            <span className="text-xs font-normal text-slate-400">of {skills.length}</span>
-          </div>
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 block">
-            Verified with Proof
-          </span>
-        </div>
-
-        <div className="p-5 rounded-2xl bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 shadow-sm transition-all hover:border-indigo-400">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block mb-1">
-            CAREER ROADMAP
-          </span>
-          <div className="text-2xl md:text-3xl font-extrabold text-emerald-600 dark:text-emerald-400">
-            {completedRoadmapTasks}{' '}
-            <span className="text-xs font-normal text-slate-400">of {roadmaps.length}</span>
-          </div>
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 mt-1 block">
-            Milestones Completed
-          </span>
-        </div>
-      </div>
-
-      {/* 3. Dedicated Navigation Pages Grid */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Student Workspace Pages
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Card 1: Contineo Academic Truth Page */}
-          <Link
-            href="/student/academic-truth"
-            className="p-5 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 hover:border-emerald-500/50 hover:shadow-lg transition-all group block"
-          >
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20">
-                <GraduationCap className="w-6 h-6" />
+          <section className="grid gap-6 xl:grid-cols-2">
+            <div className={cardClass}>
+              <h3 className="text-lg font-bold">My skills</h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Illustrative levels, not assessed results.
+              </p>
+              <div className="mt-6 space-y-5">
+                {skills.map((skill) => (
+                  <div key={skill.name}>
+                    <div className="mb-2 flex justify-between text-sm">
+                      <span>{skill.name}</span>
+                      <strong>{skill.level}%</strong>
+                    </div>
+                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div
+                        className="h-full rounded-full bg-indigo-600"
+                        style={{ width: `${skill.level}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-500/30">
-                Exam Cell Synced
-              </span>
             </div>
 
-            <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors flex items-center justify-between">
-              <span>Contineo Academic Truth & ERP Ledger</span>
-              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-              Dedicated page displaying your official semester 1-6 marks breakdown, SGPA ledger, credits earned, and form to report revaluation grade discrepancies directly to faculty.
-            </p>
-          </Link>
-
-          {/* Card 2: CGPA Simulation Planner Page */}
-          <Link
-            href="/student/cgpa-calculator"
-            className="p-5 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 hover:border-sky-500/50 hover:shadow-lg transition-all group block"
-          >
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div className="p-3 rounded-xl bg-sky-50 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20">
-                <Calculator className="w-6 h-6" />
+            <div className={cardClass}>
+              <h3 className="text-lg font-bold">Recommended next steps</h3>
+              <div className="mt-4 space-y-3">
+                {[
+                  ["Create your resume", "Add your education, skills and projects.", "resume"],
+                  ["Practise DSA", "Track the topics you have completed.", "dsa"],
+                  ["Upload certificates", "Organize your achievements.", "certificates"],
+                ].map(([title, detail, id]) => (
+                  <button
+                    key={id}
+                    onClick={() => goTo(id)}
+                    className="flex w-full items-center gap-3 rounded-xl border p-4 text-left hover:bg-indigo-50"
+                  >
+                    <CheckCircle2 className="shrink-0 text-indigo-600" />
+                    <span className="flex-1">
+                      <strong className="block text-sm">{title}</strong>
+                      <span className="mt-1 block text-xs text-slate-500">{detail}</span>
+                    </span>
+                    <ArrowRight size={16} />
+                  </button>
+                ))}
               </div>
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 border border-sky-300 dark:border-sky-500/30">
-                Target Optimizer
-              </span>
             </div>
+          </section>
 
-            <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors flex items-center justify-between">
-              <span>CGPA Simulation Planner</span>
-              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-              Dedicated interactive page to calculate exact minimum SGPA required in remaining semesters to achieve your dream company cutoff.
-            </p>
-          </Link>
-
-          {/* Card 3: Verifiable Skill Passport Page */}
-          <Link
-            href="/student/skill-passport"
-            className="p-5 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 hover:border-indigo-500/50 hover:shadow-lg transition-all group block"
-          >
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div className="p-3 rounded-xl bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20">
-                <ShieldCheck className="w-6 h-6" />
+          <section id="resume" className="scroll-mt-24 space-y-4">
+            <div>
+              <h2 className="text-2xl font-extrabold">Resume Builder</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Fill in your information to preview a basic resume.
+              </p>
+            </div>
+            <div className="grid gap-6 xl:grid-cols-2">
+              <div className={cardClass}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {[
+                    ["name", "Full name"],
+                    ["email", "Email"],
+                    ["phone", "Phone"],
+                    ["education", "Education / college"],
+                    ["skills", "Technical skills"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="text-sm font-medium">
+                      {label}
+                      <input
+                        className={inputClass}
+                        value={resume[key as keyof typeof resume]}
+                        onChange={(e) =>
+                          setResume({ ...resume, [key]: e.target.value })
+                        }
+                        placeholder={label}
+                      />
+                    </label>
+                  ))}
+                  <label className="text-sm font-medium sm:col-span-2">
+                    Career objective
+                    <textarea
+                      className={inputClass}
+                      rows={3}
+                      value={resume.objective}
+                      onChange={(e) =>
+                        setResume({ ...resume, objective: e.target.value })
+                      }
+                      placeholder="Describe the role you want."
+                    />
+                  </label>
+                  <label className="text-sm font-medium sm:col-span-2">
+                    Projects and experience
+                    <textarea
+                      className={inputClass}
+                      rows={4}
+                      value={resume.projects}
+                      onChange={(e) =>
+                        setResume({ ...resume, projects: e.target.value })
+                      }
+                      placeholder="Describe your projects and contributions."
+                    />
+                  </label>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="mt-5 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white"
+                >
+                  <Download size={16} className="mr-2 inline" />
+                  Print / Save as PDF
+                </button>
               </div>
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-300 dark:border-indigo-500/30">
-                {verifiedCount} Verified
-              </span>
-            </div>
 
-            <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors flex items-center justify-between">
-              <span>Verifiable Skill Passport</span>
-              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-              Dedicated page to manage technical skills, submit proof repositories or PDF certificates, and control recruiter visibility settings.
-            </p>
-          </Link>
-
-          {/* Card 4: 30-Day Targeted Career Roadmap Page */}
-          <Link
-            href="/student/roadmap"
-            className="p-5 rounded-2xl glass-card border border-slate-200 dark:border-slate-800 hover:border-amber-500/50 hover:shadow-lg transition-all group block"
-          >
-            <div className="flex items-start justify-between gap-4 mb-3">
-              <div className="p-3 rounded-xl bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-500/20">
-                <Calendar className="w-6 h-6" />
+              <div className={`${cardClass} print:border-0 print:shadow-none`}>
+                <h3 className="text-xl font-extrabold">{resume.name || "Your Name"}</h3>
+                <p className="mt-2 break-words text-sm text-slate-500">
+                  {[resume.email, resume.phone].filter(Boolean).join(" | ")}
+                </p>
+                <hr className="my-5" />
+                <h4 className="font-bold">CAREER OBJECTIVE</h4>
+                <p className="mt-2 whitespace-pre-wrap text-sm">{resume.objective || "Your objective will appear here."}</p>
+                <h4 className="mt-5 font-bold">EDUCATION</h4>
+                <p className="mt-2 whitespace-pre-wrap text-sm">{resume.education || "Your education details"}</p>
+                <h4 className="mt-5 font-bold">TECHNICAL SKILLS</h4>
+                <p className="mt-2 whitespace-pre-wrap text-sm">{resume.skills || "Your skills"}</p>
+                <h4 className="mt-5 font-bold">PROJECTS</h4>
+                <p className="mt-2 whitespace-pre-wrap text-sm">{resume.projects || "Your projects"}</p>
               </div>
-              <span className="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-500/30">
-                {target_role}
-              </span>
             </div>
+          </section>
 
-            <h4 className="text-base font-bold text-slate-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors flex items-center justify-between">
-              <span>30-Day Targeted Career Roadmap</span>
-              <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-            </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">
-              Dedicated page with weekly action items, interactive learning resources, and progress checkmarks for your target job role.
-            </p>
-          </Link>
-        </div>
-      </div>
+<section id="coach" className="scroll-mt-24">
+            <div className={cardClass}>
+              <BrainCircuit size={28} className="text-indigo-600" />
+              <h2 className="mt-3 text-2xl font-extrabold">AI Career Coach</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                AI analysis will be connected later. Select a target role to
+                prepare your career plan.
+              </p>
+              <select
+                value={targetRole}
+                onChange={(e) => setTargetRole(e.target.value)}
+                className={inputClass}
+              >
+                <option>AI Engineer</option>
+                <option>Software Developer</option>
+                <option>Data Analyst</option>
+                <option>Frontend Developer</option>
+                <option>Backend Developer</option>
+              </select>
+              <div className="mt-4 rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">
+                Your selected goal: <strong>{targetRole}</strong>. Focus on
+                fundamentals, projects, assessments and interview preparation.
+              </div>
+              <p className="mt-3 text-xs text-slate-400">
+                This is general guidance, not a live AI-generated assessment.
+              </p>
+            </div>
+          </section>
 
-      {/* Modals */}
-      <EvidenceModal
-        isOpen={isEvidenceModalOpen}
-        onClose={() => setIsEvidenceModalOpen(false)}
-        studentId={profile.id}
-        defaultSkill="Python"
-        onSuccess={() => {
-          setIsEvidenceModalOpen(false);
-          fetchStudentData();
-        }}
-      />
+          <section id="learn" className="scroll-mt-24">
+            <div className={cardClass}>
+              <h2 className="text-2xl font-extrabold">Learn Programming</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Choose a language and track the fundamentals you complete.
+              </p>
+              <select
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+                className={inputClass}
+              >
+                <option>Python</option>
+                <option>Java</option>
+                <option>C++</option>
+              </select>
+              <div className="mt-5 space-y-3">
+                {["Variables and types", "Conditions and loops", "Functions", "Arrays and strings", "Object-oriented programming", "Basic input/output"].map((topic) => {
+                  const key = `${language}:${topic}`;
+                  return (
+                    <label key={key} className="flex items-center gap-3 rounded-xl border p-3 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={done.includes(key)}
+                        onChange={() => setDone(done.includes(key) ? done.filter((x) => x !== key) : [...done, key])}
+                      />
+                      {topic}
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="mt-4 text-sm font-semibold text-indigo-700">
+                Completed: {done.length} topics across your selected languages
+              </p>
+            </div>
+          </section>
 
-      <ResumeAnalyzerModal
-        isOpen={isAnalyzerModalOpen}
-        onClose={() => setIsAnalyzerModalOpen(false)}
-        targetRole={target_role}
-      />
+          <section id="dsa" className="scroll-mt-24">
+            <div className={cardClass}>
+              <h2 className="text-2xl font-extrabold">DSA Practice Tracker</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Check off topics as you practise them. Coding execution is not included.
+              </p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {topics.map((topic) => (
+                  <label key={topic} className="flex items-center gap-3 rounded-xl border p-4 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={done.includes(`DSA:${topic}`)}
+                      onChange={() => {
+                        const key = `DSA:${topic}`;
+                        setDone(done.includes(key) ? done.filter((x) => x !== key) : [...done, key]);
+                      }}
+                    />
+                    {topic}
+                  </label>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section id="certificates" className="scroll-mt-24">
+            <div className={cardClass}>
+              <h2 className="text-2xl font-extrabold">Certificates</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Choose PDF or image files to list them in this browser session.
+                This does not upload them to a server or verify authenticity.
+              </p>
+              <label className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white">
+                <Upload size={18} /> Select certificate files
+                <input
+                  type="file"
+                  multiple
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  className="hidden"
+                  onChange={(e) => setCertificates([...certificates, ...Array.from(e.target.files || [])])}
+                />
+              </label>
+              <div className="mt-5 space-y-3">
+                {certificates.map((file, index) => (
+                  <div key={`${file.name}-${index}`} className="flex items-center gap-3 rounded-xl border p-3">
+                    <FileText className="text-indigo-600" />
+                    <span className="flex-1 break-all text-sm">{file.name}</span>
+                    <span className="text-xs text-amber-700">Pending review</span>
+                    <button aria-label={`Remove ${file.name}`} onClick={() => setCertificates(certificates.filter((_, i) => i !== index))}>
+                      <Trash2 size={17} className="text-rose-600" />
+                    </button>
+                  </div>
+                ))}
+                {certificates.length === 0 && <p className="text-sm text-slate-400">No certificates selected yet.</p>}
+              </div>
+            </div>
+          </section>
+
+          <section id="placements" className="scroll-mt-24">
+            <div className={cardClass}>
+              <h2 className="text-2xl font-extrabold">Placement History</h2>
+              <p className="mt-2 text-sm text-slate-500">
+                Illustrative records only. Replace with verified college placement data.
+              </p>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <label className="flex items-center gap-2 rounded-xl border px-3">
+                  <Search size={18} className="text-slate-400" />
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search companies or roles" className="w-full py-3 text-sm outline-none" />
+                </label>
+                <select value={year} onChange={(e) => setYear(e.target.value)} className="rounded-xl border p-3 text-sm">
+                  <option value="all">All years</option>
+                  <option value="2026">2026</option>
+                  <option value="2025">2025</option>
+                  <option value="2024">2024</option>
+                </select>
+              </div>
+              <div className="mt-5 space-y-3">
+                {filteredCompanies.map((company) => (
+                  <div key={company.name} className="flex flex-col gap-2 rounded-xl border p-4 sm:flex-row sm:items-center">
+                    <div className="flex-1">
+                      <h3 className="font-bold">{company.name}</h3>
+                      <p className="mt-1 text-sm text-slate-500">{company.role} · {company.year}</p>
+                    </div>
+                    <span className="text-sm font-semibold text-indigo-700">{company.package}</span>
+                  </div>
+                ))}
+                {filteredCompanies.length === 0 && <p className="text-sm text-slate-500">No matching companies found.</p>}
+              </div>
+            </div>
+          </section>
+
+          <footer className="border-t py-5 text-xs text-slate-400">
+            YojanaSethu Student Portal · Frontend prototype
+          </footer>
+</div>
+      </main>
     </div>
   );
 }
