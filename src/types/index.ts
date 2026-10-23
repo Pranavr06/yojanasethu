@@ -506,3 +506,179 @@ export interface VerifiedCredentialSummary {
   verification_badge: boolean;
   credential_url?: string | null;
 }
+
+
+// ============================================================================
+// ACADEMIC IMPROVEMENT & COMPANY-TARGETED PLACEMENT PREPARATION TYPES
+// ============================================================================
+
+export type LetterGrade = 'S' | 'A' | 'B' | 'C' | 'D' | 'E' | 'F';
+
+export interface AcademicSubjectRecord {
+  id: string;
+  subject_code: string;
+  subject_name: string;
+  semester: number;
+  department: string;
+  credits: number;
+  internal_marks: number; // Max 50 (CIE)
+  external_marks: number; // Max 50 (SEE)
+  total_marks: number;    // Max 100
+  grade: LetterGrade;
+  grade_points: number;
+  attendance_pct: number;
+  is_backlog: boolean;
+  upcoming_exam_date?: string | null;
+  syllabus_topics: string[];
+  weak_topics: string[];
+  recommended_action: string;
+}
+
+export interface StudentAcademicProfile {
+  profile: Profile;
+  academic_record: AcademicRecord;
+  semester_marks: SemesterMark[];
+  subjects: AcademicSubjectRecord[];
+  weak_subjects: AcademicSubjectRecord[];
+  backlog_subjects: AcademicSubjectRecord[];
+  overall_attendance_pct: number;
+  cgpa: number;
+  active_backlogs_count: number;
+}
+
+export type ResourceVerificationStatus = 'verified_video' | 'verified_playlist' | 'search_fallback';
+
+export interface CuratedLearningResource {
+  id: string;
+  subject_code: string;
+  topic: string;
+  title: string;
+  channel_name: string;
+  resource_url: string;
+  playlist_url?: string | null;
+  duration_minutes: number;
+  verification_status: ResourceVerificationStatus;
+  verification_label: string;
+  retrieval_date: string;
+  semester: number;
+  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
+  in_app_destination_url: string;
+  linked_quiz_subject?: string;
+}
+
+export type DSACategoryType = 'verified_historical' | 'frequently_reported' | 'ai_generated';
+
+export interface DSAExample {
+  input: string;
+  output: string;
+  explanation?: string;
+}
+
+export interface DSATestCase {
+  input: string;
+  expectedOutput: string;
+  isHidden?: boolean;
+}
+
+export interface DSAProblem {
+  id: string;
+  title: string;
+  category: string;
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  frequency: 'High' | 'Very High' | 'Critical';
+  core_pattern: string;
+  category_type: DSACategoryType;
+  target_companies: string[];
+  target_role: string;
+  statement: string;
+  constraints: string[];
+  examples: DSAExample[];
+  hints: string[];
+  starter_code: Record<string, string>;
+  reference_solution: Record<string, string>;
+  time_complexity: string;
+  space_complexity: string;
+  source_attribution?: string;
+  source_url?: string;
+  reported_date?: string;
+  test_cases: DSATestCase[];
+  prerequisites?: string[];
+}
+
+export interface DSAAttemptRecord {
+  id: string;
+  student_id: string;
+  problem_id: string;
+  status: 'solved' | 'attempted' | 'failed';
+  code: string;
+  language: string;
+  test_results: {
+    passed: number;
+    total: number;
+    error_message?: string;
+  };
+  time_taken_seconds: number;
+  hints_used: number;
+  attempts_count: number;
+  viewed_solution: boolean;
+  mastery_score: number; // 0 - 100
+  completed_at: string;
+}
+
+export interface CompanyPrepGoal {
+  target_companies: string[];
+  target_role: string;
+  placement_deadline: string;
+  daily_prep_minutes: number;
+  readiness_score: number; // 0 - 100
+  verified_questions_count: number;
+  frequently_reported_count: number;
+  ai_generated_count: number;
+  topic_coverage: {
+    category: string;
+    coverage_pct: number;
+    mastery_level: 'Novice' | 'Developing' | 'Proficient' | 'Mastered';
+  }[];
+}
+
+export type RoadmapTaskCategory =
+  | 'academic_priority'
+  | 'adaptive_dsa'
+  | 'company_prep'
+  | 'video_lesson'
+  | 'mock_interview'
+  | 'revision';
+
+export interface UnifiedRoadmapTask {
+  id: string;
+  student_id: string;
+  day_number: number;
+  week_number: number;
+  category: RoadmapTaskCategory;
+  title: string;
+  description: string;
+  priority: 'high' | 'medium' | 'low';
+  estimated_minutes: number;
+  completion_criteria: string;
+  action_destination_url: string;
+  is_completed: boolean;
+  completed_at?: string;
+  evidence_notes?: string;
+}
+
+export interface AdaptiveRecommendation {
+  subject_or_domain: string;
+  topic: string;
+  reason_priority: string;
+  database_evidence: string;
+  learning_sequence: string[];
+  curated_resource: CuratedLearningResource;
+  in_app_destination: {
+    label: string;
+    url: string;
+  };
+  estimated_time_minutes: number;
+  completion_criterion: string;
+  quiz_available: boolean;
+  follow_up_assessment_id?: string;
+}
