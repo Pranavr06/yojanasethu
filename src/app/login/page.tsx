@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/authContext';
 import { useTheme } from '@/lib/themeContext';
+import { AppRole, APP_ROLES } from '@/lib/rbac';
 import {
   Compass,
   Lock,
@@ -16,13 +17,14 @@ import {
   Eye,
   EyeOff,
   ShieldCheck,
-  CheckCircle2,
+  UserCheck,
 } from 'lucide-react';
 
 export default function LoginPage() {
   const { signIn } = useAuth();
   const { theme, toggleTheme } = useTheme();
 
+  const [selectedRole, setSelectedRole] = useState<AppRole | ''>('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -31,6 +33,10 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedRole) {
+      setError('Please select your role from the dropdown.');
+      return;
+    }
     if (!email || !password) {
       setError('Please provide both institutional email and password.');
       return;
@@ -39,16 +45,17 @@ export default function LoginPage() {
     setLoading(true);
     setError(null);
 
-    const res = await signIn(email, password);
+    const res = await signIn(email, password, selectedRole);
     if (!res.success) {
       setError(res.error || 'Failed to authenticate. Please check your credentials.');
       setLoading(false);
     }
   };
 
-  const handleQuickLogin = (demoEmail: string) => {
+  const handleQuickLogin = (demoEmail: string, demoRole: AppRole) => {
     setEmail(demoEmail);
     setPassword('Password@123');
+    setSelectedRole(demoRole);
     setError(null);
   };
 
@@ -93,6 +100,38 @@ export default function LoginPage() {
 
         {/* Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          {/* 1. Five Roles Dropdown */}
+          <div>
+            <label
+              htmlFor="login-role"
+              className="block text-slate-700 dark:text-slate-300 font-semibold mb-1"
+            >
+              Select Role / Portal
+            </label>
+            <div className="relative">
+              <UserCheck className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" aria-hidden="true" />
+              <select
+                id="login-role"
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value as AppRole)}
+                required
+                aria-required="true"
+                disabled={loading}
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 focus:outline-none focus:border-indigo-500 text-xs font-medium transition-colors disabled:opacity-50 appearance-none cursor-pointer"
+              >
+                <option value="" disabled>
+                  -- Select your role / portal --
+                </option>
+                <option value="student">Student (Student Dashboard)</option>
+                <option value="mentor">Teacher / Mentor (Faculty Mentor Desk)</option>
+                <option value="placements">Placements (Training & Placement Cell)</option>
+                <option value="recruiter">Recruiter (Industry Talent Pipeline)</option>
+                <option value="admin">Admin (System Administration)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* 2. Email */}
           <div>
             <label
               htmlFor="login-email"
@@ -117,6 +156,7 @@ export default function LoginPage() {
             </div>
           </div>
 
+          {/* 3. Password */}
           <div>
             <div className="flex items-center justify-between mb-1">
               <label
@@ -196,32 +236,48 @@ export default function LoginPage() {
           <div className="grid grid-cols-2 gap-2 text-[10px]">
             <button
               type="button"
-              onClick={() => handleQuickLogin('pranav.r@nmamit.in')}
-              className="p-2 text-left rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-500/50 hover:bg-indigo-50/20 transition-colors"
+              onClick={() => handleQuickLogin('pranav.r@nmamit.in', 'student')}
+              className={`p-2 text-left rounded-lg border transition-colors ${
+                selectedRole === 'student' && email === 'pranav.r@nmamit.in'
+                  ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-500/50'
+              }`}
             >
               <div className="font-semibold text-slate-800 dark:text-slate-200">Student</div>
               <div className="text-slate-400 truncate">pranav.r@nmamit.in</div>
             </button>
             <button
               type="button"
-              onClick={() => handleQuickLogin('sharma.faculty@nmamit.in')}
-              className="p-2 text-left rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-500/50 hover:bg-indigo-50/20 transition-colors"
+              onClick={() => handleQuickLogin('sharma.faculty@nmamit.in', 'mentor')}
+              className={`p-2 text-left rounded-lg border transition-colors ${
+                selectedRole === 'mentor' && email === 'sharma.faculty@nmamit.in'
+                  ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-500/50'
+              }`}
             >
-              <div className="font-semibold text-slate-800 dark:text-slate-200">Mentor</div>
+              <div className="font-semibold text-slate-800 dark:text-slate-200">Teacher / Mentor</div>
               <div className="text-slate-400 truncate">sharma.faculty@nmamit.in</div>
             </button>
             <button
               type="button"
-              onClick={() => handleQuickLogin('priya.nair@nexusai.com')}
-              className="p-2 text-left rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-500/50 hover:bg-indigo-50/20 transition-colors"
+              onClick={() => handleQuickLogin('priya.nair@nexusai.com', 'recruiter')}
+              className={`p-2 text-left rounded-lg border transition-colors ${
+                selectedRole === 'recruiter' && email === 'priya.nair@nexusai.com'
+                  ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-500/50'
+              }`}
             >
               <div className="font-semibold text-slate-800 dark:text-slate-200">Recruiter</div>
               <div className="text-slate-400 truncate">priya.nair@nexusai.com</div>
             </button>
             <button
               type="button"
-              onClick={() => handleQuickLogin('tpo@nmamit.in')}
-              className="p-2 text-left rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-500/50 hover:bg-indigo-50/20 transition-colors"
+              onClick={() => handleQuickLogin('tpo@nmamit.in', 'admin')}
+              className={`p-2 text-left rounded-lg border transition-colors ${
+                (selectedRole === 'admin' || selectedRole === 'placements') && email === 'tpo@nmamit.in'
+                  ? 'border-indigo-500 bg-indigo-50/30 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300'
+                  : 'border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/50 hover:border-indigo-500/50'
+              }`}
             >
               <div className="font-semibold text-slate-800 dark:text-slate-200">Admin / Placements</div>
               <div className="text-slate-400 truncate">tpo@nmamit.in</div>

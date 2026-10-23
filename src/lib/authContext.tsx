@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { User, Session } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import { Profile } from '@/types';
-import { normalizeRole, ROLE_DASHBOARDS, AppRole } from '@/lib/rbac';
+import { normalizeRole, ROLE_DASHBOARDS, AppRole, getRoleLabel } from '@/lib/rbac';
 
 interface AuthContextType {
   user: Profile | null;
@@ -13,8 +13,8 @@ interface AuthContextType {
   session: Session | null;
   role: AppRole | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string; redirectUrl?: string }>;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; redirectUrl?: string }>;
+  signIn: (email: string, password: string, expectedRole?: AppRole | '') => Promise<{ success: boolean; error?: string; redirectUrl?: string }>;
+  login: (email: string, password: string, expectedRole?: AppRole | '') => Promise<{ success: boolean; error?: string; redirectUrl?: string }>;
   signUp: (params: {
     fullName: string;
     email: string;
@@ -180,7 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const signIn = async (email: string, password: string) => {
+  const signIn = async (email: string, password: string, expectedRole?: AppRole | '') => {
     setLoading(true);
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -205,6 +205,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         normalizeRole(authUser?.user_metadata?.role) ||
         'student';
       setRole(resolvedRole);
+
+      // Verify against selected dropdown role if user specified one
+      if (expectedRole) {
+        const isRoleMatch =
+          resolvedRole === expectedRole ||
+          (resolvedRole === 'admin' && (expectedRole === 'placements' || expectedRole === 'admin')) ||
+          (resolvedRole === 'placements' && (expectedRole === 'admin' || expectedRole === 'placements'));
+
+        if (!isRoleMatch) {
+          setLoading(false);
+          return {
+            success: false,
+            error: `Role Mismatch: Your account is verified as "${getRoleLabel(resolvedRole)}", but you selected "${getRoleLabel(expectedRole)}". Please select the correct role from the dropdown.`,
+          };
+        }
+      }
 
       // Check if user is pending approval
       const isPending = authUser?.user_metadata?.approval_status === 'pending';
