@@ -683,7 +683,7 @@ export default function UnifiedAcademicCareerCoachPage() {
                 Problems documented directly by past batch candidates in actual {selectedCompany} Technical and OA rounds with source links and verified test cases.
               </p>
               <Link
-                href={`/student/dsa-tracker?company=${selectedCompany}`}
+                href={`/student/dsa-tracker?company=${selectedCompany}&categoryType=verified_historical`}
                 className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400 font-bold hover:underline pt-1"
               >
                 <span>View {selectedCompany} Questions in Tracker</span>
@@ -703,7 +703,7 @@ export default function UnifiedAcademicCareerCoachPage() {
                 Algorithmic concepts frequently emphasized by {selectedCompany} panels (Sliding Window, Prefix Hash Maps, Monotonic Stacks, and Graph BFS).
               </p>
               <Link
-                href="/student/dsa-tracker"
+                href={`/student/dsa-tracker?company=${selectedCompany}&categoryType=frequently_reported`}
                 className="inline-flex items-center gap-1 text-amber-700 dark:text-amber-400 font-bold hover:underline pt-1"
               >
                 <span>Practice Core Patterns</span>
@@ -722,13 +722,22 @@ export default function UnifiedAcademicCareerCoachPage() {
               <p className="text-slate-600 dark:text-slate-300 text-[11px] leading-relaxed">
                 Synthesized by Google Gemini AI to target your exact weak topics under {selectedCompany} constraints. Explicitly tagged as AI-generated.
               </p>
-              <button
-                onClick={() => handleSendChatMessage(`Generate an interview problem targeting my weak topics for ${selectedCompany}`)}
-                className="inline-flex items-center gap-1 text-purple-700 dark:text-purple-400 font-bold hover:underline pt-1"
-              >
-                <span>Request AI Problem Set</span>
-                <Sparkles className="w-3 h-3" />
-              </button>
+              <div className="flex items-center gap-3 pt-1 flex-wrap">
+                <Link
+                  href={`/student/dsa-tracker?company=${selectedCompany}&categoryType=ai_generated`}
+                  className="inline-flex items-center gap-1 text-purple-700 dark:text-purple-400 font-bold hover:underline"
+                >
+                  <span>Practice AI-Generated Problems</span>
+                  <ArrowRight className="w-3 h-3" />
+                </Link>
+                <button
+                  onClick={() => handleSendChatMessage(`Generate an interview problem targeting my weak topics for ${selectedCompany}`)}
+                  className="inline-flex items-center gap-1 text-slate-500 hover:text-purple-600 font-semibold text-[11px]"
+                >
+                  <span>Request AI Problem Set</span>
+                  <Sparkles className="w-3 h-3" />
+                </button>
+              </div>
             </div>
           </div>
         </div>

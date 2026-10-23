@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateStudentSession } from '@/lib/serverAuth';
 import { DSAProblem } from '@/types';
+import { dbSaveDSAProblem } from '@/lib/db';
 // @ts-ignore
 import { GoogleGenAI } from '@google/genai';
 
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
         prerequisites: [],
       };
 
+      await dbSaveDSAProblem(fallbackProblem);
       return NextResponse.json({ problem: fallbackProblem, source: 'fallback' });
     }
 
@@ -167,6 +169,8 @@ Return STRICT valid JSON only with this schema:
       test_cases: generatedJson.test_cases || [],
       prerequisites: [],
     };
+
+    await dbSaveDSAProblem(newProblem);
 
     return NextResponse.json({ problem: newProblem, source: 'gemini_ai' });
   } catch (error: any) {

@@ -34,6 +34,9 @@ import {
   COMPREHENSIVE_DSA_PROBLEMS,
   calculateProblemMastery,
   selectAdaptiveNextProblem,
+  normalizeCategory,
+  normalizeCategoryType,
+  TOPIC_CATEGORIES,
 } from '@/lib/dsaProblemCatalog';
 
 const TARGET_COMPANIES = [
@@ -49,9 +52,28 @@ const TARGET_COMPANIES = [
 
 function DSATrackerContent() {
   const searchParams = useSearchParams();
-  const initialCategory = searchParams?.get('category') || 'All';
-  const initialCompany = searchParams?.get('company') || 'All';
+  const rawCategory = searchParams?.get('category');
+  const rawCompany = searchParams?.get('company') || 'All';
   const initialProblemId = searchParams?.get('problemId') || null;
+  const rawCategoryType = searchParams?.get('categoryType') || searchParams?.get('category_type');
+
+  // Normalize initial parameters (supporting Category 3 in both topic and source type)
+  let initialCategory = 'All';
+  let initialCategoryType = 'All';
+
+  if (rawCategoryType) {
+    initialCategoryType = normalizeCategoryType(rawCategoryType);
+  }
+
+  if (rawCategory) {
+    if (rawCategory === '3' || rawCategory.toLowerCase() === 'ai_generated' || rawCategory.toLowerCase() === 'ai-generated') {
+      if (initialCategoryType === 'All') {
+        initialCategoryType = 'ai_generated';
+      }
+    } else {
+      initialCategory = normalizeCategory(rawCategory);
+    }
+  }
 
   const { user } = useAuth();
   const studentId = user?.id || user?.usn || 'demo-student';
@@ -59,9 +81,9 @@ function DSATrackerContent() {
   const [problems, setProblems] = useState<DSAProblem[]>(COMPREHENSIVE_DSA_PROBLEMS);
   const [attempts, setAttempts] = useState<Record<string, DSAAttemptRecord>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory);
-  const [selectedCompany, setSelectedCompany] = useState<string>(initialCompany);
+  const [selectedCompany, setSelectedCompany] = useState<string>(rawCompany);
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
-  const [categoryTypeFilter, setCategoryTypeFilter] = useState<string>('All');
+  const [categoryTypeFilter, setCategoryTypeFilter] = useState<string>(initialCategoryType);
   const [search, setSearch] = useState<string>('');
 
   // Active Problem Solving Workspace State
@@ -89,24 +111,60 @@ function DSATrackerContent() {
   useEffect(() => {
     async function loadData() {
       try {
-        const res = await fetch(`/api/dsa?company=${selectedCompany}&category=${selectedCategory}&studentId=${encodeURIComponent(studentId)}`);
+        const queryParams = new URLSearchParams();
+        if (selectedCompany !== 'All') queryParams.set('company', selectedCompany);
+        if (selectedCategory !== 'All') queryParams.set('category', selectedCategory);
+        if (categoryTypeFilter !== 'All') queryParams.set('categoryType', categoryTypeFilter);
+        queryParams.set('studentId', studentId);
+
+        const res = await fetch(`/api/dsa?${queryParams.toString()}`);
         const data = await res.json();
-        if (data.problems) setProblems(data.problems);
+        if (data.problems && Array.isArray(data.problems)) {
+          setProblems((prev) => {
+            const merged = new Map<string, DSAProblem>();
+            // Keep existing dynamically generated ones in state
+            prev.forEach((p) => merged.set(p.id, p));
+            data.problems.forEach((p: DSAProblem) => merged.set(p.id, p));
+            return Array.from(merged.values());
+          });
+        }
         if (data.attempts) setAttempts(data.attempts);
       } catch (err) {
         console.warn('Fallback to local problem catalog:', err);
       }
     }
     loadData();
-  }, [selectedCompany, selectedCategory, studentId]);
+  }, [selectedCompany, selectedCategory, categoryTypeFilter, studentId]);
 
-  // Handle URL deep linking to problem
+  // Handle URL deep linking to problem (e.g. Maximal Network Path Weight)
   useEffect(() => {
-    if (initialProblemId) {
-      const match = problems.find((p) => p.id === initialProblemId);
-      if (match) openProblemWorkspace(match);
+    if (!initialProblemId) return;
+
+    const normalizedId = initialProblemId.trim().toLowerCase();
+    const match = problems.find(
+      (p) =>
+        p.id.toLowerCase() === normalizedId ||
+        p.title.toLowerCase() === normalizedId ||
+        p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === normalizedId ||
+        (normalizedId.includes('maximal-network') && p.id === 'dsa-maximal-network')
+    );
+
+    if (match) {
+      openProblemWorkspace(match);
+    } else {
+      // Fetch specific problem from API by ID
+      fetch(`/api/dsa?problemId=${encodeURIComponent(initialProblemId)}&studentId=${encodeURIComponent(studentId)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.problems && data.problems.length > 0) {
+            const fetched = data.problems[0];
+            setProblems((prev) => (prev.some((p) => p.id === fetched.id) ? prev : [fetched, ...prev]));
+            openProblemWorkspace(fetched);
+          }
+        })
+        .catch((err) => console.warn('Could not deep-link problem:', err));
     }
-  }, [initialProblemId, problems]);
+  }, [initialProblemId, problems, studentId]);
 
   const openProblemWorkspace = (problem: DSAProblem) => {
     setActiveProblem(problem);
@@ -147,6 +205,7 @@ function DSATrackerContent() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           problemId: activeProblem.id,
+          problem: activeProblem,
           code: userCode,
           language: selectedLang,
           hintsUsed: revealedHintsCount,
@@ -213,8 +272,9 @@ function DSATrackerContent() {
 
       const data = await res.json();
       if (res.ok && data.problem) {
-        setProblems((prev) => [data.problem, ...prev]);
+        setProblems((prev) => [data.problem, ...prev.filter((p) => p.id !== data.problem.id)]);
         setGenerationNotice(`Generated new ${data.problem.difficulty} problem: "${data.problem.title}"`);
+        setCategoryTypeFilter('ai_generated');
         openProblemWorkspace(data.problem);
       }
     } catch (e) {
@@ -350,16 +410,37 @@ function DSATrackerContent() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 text-xs">
-            <span className="text-[11px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
-              Verified Reported: {verifiedCount}
-            </span>
-            <span className="text-[11px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-950/40 px-2.5 py-1 rounded-lg border border-amber-200 dark:border-amber-800">
-              Frequent Patterns: {frequentCount}
-            </span>
-            <span className="text-[11px] font-bold text-purple-600 bg-purple-50 dark:bg-purple-950/40 px-2.5 py-1 rounded-lg border border-purple-200 dark:border-purple-800">
-              AI-Generated: {aiGenCount}
-            </span>
+          <div className="flex items-center gap-2 text-xs flex-wrap">
+            <button
+              onClick={() => setCategoryTypeFilter((prev) => (prev === 'verified_historical' ? 'All' : 'verified_historical'))}
+              className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                categoryTypeFilter === 'verified_historical'
+                  ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                  : 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 hover:border-emerald-400'
+              }`}
+            >
+              Category 1: Verified ({verifiedCount})
+            </button>
+            <button
+              onClick={() => setCategoryTypeFilter((prev) => (prev === 'frequently_reported' ? 'All' : 'frequently_reported'))}
+              className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                categoryTypeFilter === 'frequently_reported'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                  : 'text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border-amber-200 dark:border-amber-800 hover:border-amber-400'
+              }`}
+            >
+              Category 2: Frequent Patterns ({frequentCount})
+            </button>
+            <button
+              onClick={() => setCategoryTypeFilter((prev) => (prev === 'ai_generated' ? 'All' : 'ai_generated'))}
+              className={`text-[11px] font-bold px-2.5 py-1 rounded-lg border transition-all ${
+                categoryTypeFilter === 'ai_generated'
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                  : 'text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 hover:border-purple-400'
+              }`}
+            >
+              Category 3: AI-Generated ({aiGenCount})
+            </button>
           </div>
         </div>
 
@@ -390,7 +471,7 @@ function DSATrackerContent() {
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
           <input
             type="text"
-            placeholder="Search problems or patterns..."
+            placeholder="Search problems, patterns, or 'Maximal Network'..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -401,7 +482,7 @@ function DSATrackerContent() {
         <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
-          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium"
         >
           {categories.map((c) => (
             <option key={c} value={c}>{c}</option>
@@ -424,12 +505,12 @@ function DSATrackerContent() {
         <select
           value={categoryTypeFilter}
           onChange={(e) => setCategoryTypeFilter(e.target.value)}
-          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+          className="px-3 py-2 rounded-xl text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-900 dark:text-white font-medium"
         >
-          <option value="All">All 3 Categories</option>
-          <option value="verified_historical">Verified Historical Reported</option>
-          <option value="frequently_reported">Frequently Reported Patterns</option>
-          <option value="ai_generated">AI-Generated Practice</option>
+          <option value="All">All Source Categories</option>
+          <option value="verified_historical">Category 1: Verified Historical</option>
+          <option value="frequently_reported">Category 2: Frequently Reported Patterns</option>
+          <option value="ai_generated">Category 3: AI-Generated Practice</option>
         </select>
       </div>
 

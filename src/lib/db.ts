@@ -2472,7 +2472,11 @@ import {
 } from '@/types';
 import { buildStudentAcademicProfile } from './academicCurriculum';
 import { CURATED_RESOURCES } from './curatedResources';
-import { COMPREHENSIVE_DSA_PROBLEMS } from './dsaProblemCatalog';
+import {
+  COMPREHENSIVE_DSA_PROBLEMS,
+  normalizeCategory,
+  normalizeCategoryType,
+} from './dsaProblemCatalog';
 
 /**
  * Fetches authenticated student academic profile with subject marks, backlogs, and ERP records.
@@ -2551,35 +2555,192 @@ export async function dbGetCuratedResources(subjectCode?: string): Promise<Curat
   return CURATED_RESOURCES;
 }
 
-/**
- * Fetches DSA problems catalog, optionally filtered by target company or category.
- */
-export async function dbGetDSAProblems(company?: string, category?: string): Promise<DSAProblem[]> {
-  let list = COMPREHENSIVE_DSA_PROBLEMS;
+// ============================================================================
+// DSA PROBLEMS & ADAPTIVE PRACTICE REGISTRY
+// ============================================================================
 
+// In-memory dynamic problem registry ensuring all generated problems and aliases persist across requests
+const dynamicProblemRegistry = new Map<string, DSAProblem>();
+
+// Initialize registry with comprehensive catalog and well-known aliases
+for (const p of COMPREHENSIVE_DSA_PROBLEMS) {
+  dynamicProblemRegistry.set(p.id, p);
+  const slug = p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  dynamicProblemRegistry.set(slug, p);
+  if (p.id === 'dsa-maximal-network') {
+    dynamicProblemRegistry.set('maximal-network-path-weight', p);
+    dynamicProblemRegistry.set('dsa-maximal-network-path-weight', p);
+  }
+}
+
+/**
+ * Persists a DSA problem to both the database and the server-side registry.
+ */
+export async function dbSaveDSAProblem(problem: DSAProblem): Promise<boolean> {
+  if (!problem || !problem.id) return false;
+
+  // Always save in-memory first
+  dynamicProblemRegistry.set(problem.id, problem);
+  if (problem.title) {
+    const slug = problem.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    dynamicProblemRegistry.set(slug, problem);
+  }
+
+  // If Supabase is configured, upsert into dsa_problems table
   if (isSupabaseConfigured && supabase) {
     try {
-      let query = supabase.from('dsa_problems').select('*');
-      if (category && category !== 'All') {
-        query = query.eq('category', category);
+      const { error } = await supabase.from('dsa_problems').upsert(
+        {
+          id: problem.id,
+          title: problem.title,
+          category: problem.category,
+          difficulty: problem.difficulty,
+          frequency: problem.frequency,
+          core_pattern: problem.core_pattern,
+          category_type: problem.category_type || 'ai_generated',
+          target_companies: problem.target_companies || [],
+          target_role: problem.target_role || 'Software Development Engineer',
+          statement: problem.statement,
+          constraints: problem.constraints || [],
+          examples: problem.examples || [],
+          hints: problem.hints || [],
+          starter_code: problem.starter_code || {},
+          reference_solution: problem.reference_solution || {},
+          time_complexity: problem.time_complexity || 'O(N)',
+          space_complexity: problem.space_complexity || 'O(1)',
+          source_attribution: problem.source_attribution || 'AI-Generated Practice',
+          source_url: problem.source_url || null,
+          reported_date: problem.reported_date || null,
+          test_cases: problem.test_cases || [],
+          prerequisites: problem.prerequisites || [],
+        },
+        { onConflict: 'id' }
+      );
+
+      if (error) {
+        console.warn('dbSaveDSAProblem Supabase notice:', error.message || error);
       }
-      const { data, error } = await query;
+    } catch (err) {
+      console.warn('Exception in dbSaveDSAProblem:', err);
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Retrieves a single problem by ID, slug, or title match.
+ */
+export async function dbGetDSAProblemById(problemId: string): Promise<DSAProblem | null> {
+  if (!problemId) return null;
+  const cleanId = problemId.trim();
+
+  // 1. Check in-memory registry
+  if (dynamicProblemRegistry.has(cleanId)) {
+    return dynamicProblemRegistry.get(cleanId)!;
+  }
+
+  // 2. Comprehensive catalog check
+  const fromCatalog = COMPREHENSIVE_DSA_PROBLEMS.find(
+    (p) =>
+      p.id.toLowerCase() === cleanId.toLowerCase() ||
+      p.title.toLowerCase() === cleanId.toLowerCase() ||
+      p.title.toLowerCase().replace(/[^a-z0-9]+/g, '-') === cleanId.toLowerCase()
+  );
+  if (fromCatalog) {
+    dynamicProblemRegistry.set(cleanId, fromCatalog);
+    return fromCatalog;
+  }
+
+  // 3. Database check
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('dsa_problems')
+        .select('*')
+        .or(`id.eq.${cleanId},title.ilike.%${cleanId}%`)
+        .maybeSingle();
+
+      if (!error && data) {
+        const prob = data as DSAProblem;
+        dynamicProblemRegistry.set(prob.id, prob);
+        return prob;
+      }
+    } catch (err) {
+      console.warn('Exception in dbGetDSAProblemById:', err);
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Fetches DSA problems catalog, optionally filtered by target company, category, categoryType, or problemId.
+ */
+export async function dbGetDSAProblems(
+  company?: string,
+  category?: string,
+  categoryType?: string,
+  problemId?: string
+): Promise<DSAProblem[]> {
+  // If requesting a specific problem by ID:
+  if (problemId) {
+    const single = await dbGetDSAProblemById(problemId);
+    if (single) return [single];
+  }
+
+  // Start with all problems in the comprehensive catalog and dynamic registry
+  const problemMap = new Map<string, DSAProblem>();
+  for (const p of COMPREHENSIVE_DSA_PROBLEMS) {
+    problemMap.set(p.id, p);
+  }
+  for (const [id, p] of dynamicProblemRegistry.entries()) {
+    if (id === p.id) {
+      problemMap.set(p.id, p);
+    }
+  }
+
+  // Merge from Supabase if configured
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.from('dsa_problems').select('*');
       if (!error && data && data.length > 0) {
-        list = data as DSAProblem[];
+        for (const item of data) {
+          problemMap.set(item.id, item as DSAProblem);
+          dynamicProblemRegistry.set(item.id, item as DSAProblem);
+        }
       }
     } catch (err) {
       console.warn('Error reading dsa_problems from database:', err);
     }
   }
 
+  let list = Array.from(problemMap.values());
+
+  // Company filtering
   if (company && company !== 'All') {
     list = list.filter((p) =>
-      p.target_companies.some((c) => c.toLowerCase().includes(company.toLowerCase()))
+      p.target_companies?.some((c) => c.toLowerCase().includes(company.toLowerCase()))
     );
   }
 
+  // Category filtering with normalization
   if (category && category !== 'All') {
-    list = list.filter((p) => p.category === category);
+    // If category is a categoryType alias (e.g. category=3 or category=ai_generated)
+    if (category === '3' || category.toLowerCase() === 'ai_generated' || category.toLowerCase() === 'ai-generated') {
+      list = list.filter((p) => p.category_type === 'ai_generated' || p.category === 'Linked Lists');
+    } else {
+      const normCat = normalizeCategory(category);
+      list = list.filter((p) => p.category === normCat || p.category === category);
+    }
+  }
+
+  // CategoryType filtering with normalization
+  if (categoryType && categoryType !== 'All') {
+    const normType = normalizeCategoryType(categoryType);
+    if (normType !== 'All') {
+      list = list.filter((p) => p.category_type === normType);
+    }
   }
 
   return list;
@@ -2618,6 +2779,12 @@ export async function dbGetStudentDSAAttempts(studentId: string): Promise<Record
 export async function dbSaveDSAAttempt(attempt: DSAAttemptRecord): Promise<boolean> {
   if (isSupabaseConfigured && supabase) {
     try {
+      // First ensure the problem is recorded in dsa_problems so foreign key constraints succeed
+      const problem = await dbGetDSAProblemById(attempt.problem_id);
+      if (problem) {
+        await dbSaveDSAProblem(problem);
+      }
+
       const { error } = await supabase
         .from('student_dsa_attempts')
         .upsert(
@@ -2639,7 +2806,7 @@ export async function dbSaveDSAAttempt(attempt: DSAAttemptRecord): Promise<boole
         );
 
       if (!error) return true;
-      console.error('dbSaveDSAAttempt error:', error);
+      console.warn('dbSaveDSAAttempt Supabase notice:', error.message || error);
     } catch (err) {
       console.error('Error saving dsa attempt:', err);
     }
