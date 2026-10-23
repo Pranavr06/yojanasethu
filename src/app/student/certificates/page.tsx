@@ -111,6 +111,11 @@ export default function CertificatesPage() {
   const [credentialUrl, setCredentialUrl] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
 
+  // Partial upload retry cache (prevents duplicate storage uploads if DB registration fails)
+  const [alreadyUploadedPath, setAlreadyUploadedPath] = useState<string | null>(null);
+  const [alreadyUploadedUrl, setAlreadyUploadedUrl] = useState<string | null>(null);
+  const [studentProfileId, setStudentProfileId] = useState<string>('');
+
   // Subject classification state
   const [classification, setClassification] = useState<SubjectClassificationResult | null>(null);
   const [selectedSubject, setSelectedSubject] = useState<AssessmentSubject>('python');
@@ -123,7 +128,32 @@ export default function CertificatesPage() {
   const [assessmentModalOpen, setAssessmentModalOpen] = useState(false);
   const [activeAssessmentSub, setActiveAssessmentSub] = useState<CertificateItem | null>(null);
 
-  // Auto classify subject whenever title or skill changes
+  // Resolve authenticated student profile on mount / auth change
+  useEffect(() => {
+    async function resolveStudent() {
+      if (!user) return;
+      try {
+        const studentIdentifier = user.usn || user.id || user.email;
+        if (!studentIdentifier) return;
+        const param = studentIdentifier.includes('@')
+          ? `id=${encodeURIComponent(studentIdentifier)}`
+          : `usn=${encodeURIComponent(studentIdentifier)}`;
+
+        const res = await fetch(`/api/students?${param}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.student?.profile?.id) {
+            setStudentProfileId(data.student.profile.id);
+          }
+        }
+      } catch (err) {
+        console.warn('Student profile auto-resolve warning:', err);
+      }
+    }
+    resolveStudent();
+  }, [user]);
+
+  // Auto classify subject whenever title, issuer, or skill changes
   useEffect(() => {
     if (!certTitle.trim() && !skillName.trim()) {
       setClassification(null);
@@ -142,78 +172,135 @@ export default function CertificatesPage() {
 
   const handleFileUpload = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!certTitle.trim() || !skillName.trim()) return;
-
-    setSubmitting(true);
     setUploadError(null);
 
-    try {
-      let documentStoragePath: string | undefined;
-      let finalFileUrl: string | undefined = credentialUrl;
+    // Validation
+    if (!user) {
+      setUploadError('Authentication required: Please sign in as a student to register certificates.');
+      return;
+    }
+    if (!certTitle.trim()) {
+      setUploadError('Please provide a certificate title.');
+      return;
+    }
+    if (!skillName.trim()) {
+      setUploadError('Please specify an associated technical skill.');
+      return;
+    }
+    if (!selectedFile && !credentialUrl.trim() && !alreadyUploadedPath) {
+      setUploadError('Please select a certificate document (.pdf) or provide a verifiable credential URL.');
+      return;
+    }
+    if (selectedFile && selectedFile.size > 15 * 1024 * 1024) {
+      setUploadError('Certificate file exceeds maximum allowed limit of 15MB.');
+      return;
+    }
 
-      // 1. Real PDF upload to Supabase Storage via /api/upload
-      if (selectedFile) {
+    setSubmitting(true);
+
+    try {
+      let documentStoragePath: string | undefined = alreadyUploadedPath || undefined;
+      let finalFileUrl: string | undefined = alreadyUploadedUrl || credentialUrl.trim() || undefined;
+
+      // 1. Upload certificate PDF to storage (skipped if already uploaded during retry)
+      if (selectedFile && !alreadyUploadedPath) {
         setUploadingFile(true);
         const formData = new FormData();
         formData.append('file', selectedFile);
         formData.append('folder', 'certificates');
-        formData.append('studentId', user?.usn || user?.id || '4NM22CS120');
+        formData.append('studentId', studentProfileId || user?.id || user?.usn || '');
 
-        const uploadRes = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
+        let uploadRes: Response;
+        try {
+          uploadRes = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+        } catch (netErr: any) {
+          setUploadingFile(false);
+          throw new Error(
+            `[Upload Network Error] Could not connect to the upload service at /api/upload: ${netErr.message || 'Server unreachable'}. Verify your dev server is active.`
+          );
+        }
 
-        const uploadData = await uploadRes.json();
         setUploadingFile(false);
 
+        let uploadData: any;
+        try {
+          uploadData = await uploadRes.json();
+        } catch {
+          throw new Error(
+            `[Upload Server Error] Server returned HTTP ${uploadRes.status} (${uploadRes.statusText}) with invalid format.`
+          );
+        }
+
         if (!uploadRes.ok) {
-          throw new Error(uploadData.error || 'Failed to upload certificate document.');
+          throw new Error(uploadData?.error || `[Upload Error] HTTP ${uploadRes.status}: Unable to upload certificate.`);
         }
 
         documentStoragePath = uploadData.document_storage_path;
-        finalFileUrl = uploadData.file_url || credentialUrl;
+        finalFileUrl = uploadData.file_url || credentialUrl.trim() || undefined;
+
+        // Cache upload results so retries do not create duplicate uploads
+        setAlreadyUploadedPath(documentStoragePath || null);
+        setAlreadyUploadedUrl(finalFileUrl || null);
       }
 
-      // Safe UUID resolution (never use USN for student_id foreign key)
-      const validStudentId =
-        user?.id && user.id.includes('-')
-          ? user.id
-          : '11111111-1111-1111-1111-111111111111';
-
       // 2. Persist Evidence Submission to Database
+      const effectiveStudentId = studentProfileId || user?.id || '';
+
       const evidencePayload = {
-        student_id: validStudentId,
-        title: certTitle,
-        skill_name: skillName,
+        student_id: effectiveStudentId,
+        title: certTitle.trim(),
+        skill_name: skillName.trim(),
         credential_url: finalFileUrl || undefined,
         document_storage_path: documentStoragePath,
         type: 'certificate',
         subject: selectedSubject,
-        description: `Certificate issued by ${issuer || 'Authorized Organization'} in ${SUBJECT_METADATA[selectedSubject]?.label || selectedSubject}. Verified academic credential.`,
+        issuer_or_organization: issuer.trim() || 'Authorized Certifying Authority',
+        description: `Certificate issued by ${issuer.trim() || 'Authorized Organization'} in ${SUBJECT_METADATA[selectedSubject]?.label || selectedSubject}. Verified academic credential.`,
       };
 
-      const res = await fetch('/api/evidence', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(evidencePayload),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to register certificate submission.');
+      let res: Response;
+      try {
+        res = await fetch('/api/evidence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(evidencePayload),
+        });
+      } catch (netErr: any) {
+        throw new Error(
+          `[Registration Network Error] Could not connect to /api/evidence: ${netErr.message || 'Server unreachable'}.`
+        );
       }
 
-      const generatedId = data.submission?.id || `sub-${Date.now()}`;
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        throw new Error(
+          `[Registration Server Error] Server returned HTTP ${res.status} (${res.statusText}) with non-JSON response.`
+        );
+      }
+
+      if (!res.ok) {
+        throw new Error(data?.error || `[Registration Error] HTTP ${res.status}: Failed to register certificate submission.`);
+      }
+
+      if (!data?.submission?.id) {
+        throw new Error('[Registration Error] Database registration did not return a valid submission ID. Please try again.');
+      }
+
+      const generatedId = data.submission.id;
 
       // Append new certificate in pending_assessment status
       const newCert: CertificateItem = {
         id: generatedId,
-        title: certTitle,
-        skillName,
+        title: certTitle.trim(),
+        skillName: skillName.trim(),
         subject: selectedSubject,
         subjectLabel: SUBJECT_METADATA[selectedSubject]?.label || selectedSubject,
-        issuer: issuer || 'Authorized Certification Board',
+        issuer: issuer.trim() || 'Authorized Certification Board',
         date: 'Today',
         credentialUrl: finalFileUrl,
         fileName: selectedFile ? selectedFile.name : 'Verified_Credential.pdf',
@@ -226,7 +313,7 @@ export default function CertificatesPage() {
       };
 
       setCertificates([newCert, ...certificates]);
-      setSuccessMsg('Certificate recorded! Take the practice assessment now to submit your evidence for faculty verification.');
+      setSuccessMsg('Certificate registered successfully! Launching assessment exam...');
 
       // Open assessment after brief toast
       setTimeout(() => {
@@ -237,10 +324,12 @@ export default function CertificatesPage() {
         setIssuer('');
         setCredentialUrl('');
         setSelectedFile(null);
+        setAlreadyUploadedPath(null);
+        setAlreadyUploadedUrl(null);
         // Prompt assessment immediately
         setActiveAssessmentSub(newCert);
         setAssessmentModalOpen(true);
-      }, 1200);
+      }, 1000);
     } catch (err: any) {
       setUploadError(err.message || 'An error occurred during submission.');
     } finally {
@@ -661,7 +750,7 @@ export default function CertificatesPage() {
                   <input
                     type="file"
                     accept=".pdf,application/pdf"
-                    onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                    onChange={(e) => { setSelectedFile(e.target.files?.[0] || null); setAlreadyUploadedPath(null); setAlreadyUploadedUrl(null); setUploadError(null); }}
                     className="hidden"
                   />
                 </label>
@@ -709,7 +798,7 @@ export default function CertificatesPage() {
             setActiveAssessmentSub(null);
           }}
           submissionId={activeAssessmentSub.id}
-          studentId={user?.id && user.id.includes('-') ? user.id : '11111111-1111-1111-1111-111111111111'}
+          studentId={studentProfileId || user?.id || ''}
           subject={activeAssessmentSub.subject}
           subjectLabel={activeAssessmentSub.subjectLabel}
           certificateTitle={activeAssessmentSub.title}
