@@ -40,9 +40,7 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
     pathname === '/forgot-password' ||
     pathname === '/reset-password' ||
     pathname.startsWith('/auth/');
-  const isStudentDashboard = pathname === '/student' || pathname === '/student/dashboard';
-
-  if (isAuthPage || isStudentDashboard) {
+  if (isAuthPage) {
     return (
       <main className="min-h-screen w-full bg-slate-50 text-slate-900 dark:bg-[#070B14] dark:text-slate-100">
         {children}
