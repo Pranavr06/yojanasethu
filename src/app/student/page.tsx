@@ -1,550 +1,566 @@
+'use client';
 
-"use client";
-
-import { useState } from "react";
+import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@/lib/authContext';
 import {
-  LayoutDashboard, FileText, BrainCircuit, Code2, Award,
-  BriefcaseBusiness, GraduationCap, Menu, X, Upload,
-  Trash2, Search, Target, BookOpen, Sparkles, CheckCircle2,
-  ArrowRight, Download, Briefcase, ShieldCheck, Calculator,
-  Calendar, ExternalLink, LogOut,
-} from "lucide-react";
-import Link from "next/link";
-import { useAuth } from "@/lib/authContext";
-
-const skills = [
-  { name: "Python", level: 80 },
-  { name: "DSA", level: 55 },
-  { name: "SQL", level: 70 },
-  { name: "Machine Learning", level: 40 },
-];
-
-const companies = [
-  { name: "Infosys", role: "Systems Engineer", year: "2026", package: "Sample: 3.6 LPA" },
-  { name: "TCS", role: "Graduate Engineer Trainee", year: "2026", package: "Sample: 4.5 LPA" },
-  { name: "Accenture", role: "Software Engineer", year: "2025", package: "Sample: 4.5 LPA" },
-];
-
-const topics = [
-  "Variables and data types",
-  "Conditions and loops",
-  "Functions",
-  "Arrays and strings",
-  "Linked lists",
-  "Stacks and queues",
-  "Trees and graphs",
-  "Sorting and searching",
-];
-
-const nav = [
-  { id: "overview", label: "Dashboard", icon: LayoutDashboard },
-  { id: "resume", label: "Resume Builder", icon: FileText },
-  { id: "coach", label: "AI Career Coach", icon: BrainCircuit },
-  { id: "learn", label: "Learn Programming", icon: BookOpen },
-  { id: "dsa", label: "DSA Tracker", icon: Code2 },
-  { id: "certificates", label: "Certificates", icon: Award },
-  { id: "placements", label: "Placement History", icon: BriefcaseBusiness },
-];
+  LayoutDashboard,
+  GraduationCap,
+  Calculator,
+  ShieldCheck,
+  Award,
+  BrainCircuit,
+  Calendar,
+  FileText,
+  Code2,
+  BookOpen,
+  Briefcase,
+  BarChart3,
+  Sparkles,
+  ArrowRight,
+  CheckCircle2,
+  Target,
+  ExternalLink,
+  TrendingUp,
+  Clock,
+  Radio,
+  FileSearch,
+} from 'lucide-react';
 
 export default function StudentDashboard() {
-  const { user, logout } = useAuth();
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [active, setActive] = useState("overview");
-  const [search, setSearch] = useState("");
-  const [year, setYear] = useState("all");
-  const [language, setLanguage] = useState("Python");
-  const [done, setDone] = useState<string[]>([]);
-  const [certificates, setCertificates] = useState<File[]>([]);
-  const [targetRole, setTargetRole] = useState("AI Engineer");
-  const [resume, setResume] = useState({
-    name: "",
-    email: "",
-    phone: "",
-    education: "",
-    skills: "",
-    projects: "",
-    objective: "",
-  });
+  const { user } = useAuth();
+  const [studentName, setStudentName] = useState(user?.full_name || 'Pranav R');
+  const [usn, setUsn] = useState(user?.usn || '4NM22CS120');
 
-  function goTo(id: string) {
-    setActive(id);
-    setMenuOpen(false);
-    document.getElementById(id)?.scrollIntoView({
-      behavior: "smooth",
-      block: "start",
-    });
-  }
+  const skills = [
+    { name: 'Python & AI Engineering', level: 85 },
+    { name: 'TypeScript & Next.js Full Stack', level: 88 },
+    { name: 'Data Structures & Algorithms', level: 78 },
+    { name: 'PostgreSQL & Database Modeling', level: 82 },
+  ];
 
-  const filteredCompanies = companies.filter((company) => {
-    const matchesSearch = `${company.name} ${company.role}`
-      .toLowerCase()
-      .includes(search.toLowerCase());
-    return matchesSearch && (year === "all" || company.year === year);
-  });
-
-  const inputClass =
-    "mt-1 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-indigo-500";
-  const cardClass =
-    "rounded-2xl border border-slate-200 bg-white p-5 sm:p-6";
+  const recentDrives = [
+    {
+      company: 'Nexus AI Technologies',
+      role: 'AI / Full Stack Intern',
+      ctc: '14.5 LPA',
+      tier: 'Super Dream',
+      deadline: 'Tomorrow, 5:00 PM',
+      status: 'Eligible (CGPA ≥ 8.0)',
+    },
+    {
+      company: 'Cisco Systems',
+      role: 'Cloud Software Engineer',
+      ctc: '12.0 LPA',
+      tier: 'Dream',
+      deadline: 'In 3 days',
+      status: 'Eligible (CGPA ≥ 7.5)',
+    },
+    {
+      company: 'Infosys Limited',
+      role: 'Specialist Programmer (SP)',
+      ctc: '9.5 LPA',
+      tier: 'Specialist',
+      deadline: 'In 5 days',
+      status: 'Eligible (All Cleared)',
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      {menuOpen && (
-        <button
-          aria-label="Close menu"
-          onClick={() => setMenuOpen(false)}
-          className="fixed inset-0 z-40 bg-black/40 md:hidden"
-        />
-      )}
+    <div className="space-y-8 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+      {/* Hero Welcome Banner */}
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-700 via-indigo-700 to-violet-700 p-6 sm:p-10 text-white shadow-xl">
+        <div className="relative z-10 max-w-3xl space-y-4">
+          <div className="inline-flex items-center gap-2 rounded-full bg-white/15 px-3 py-1 text-xs font-semibold backdrop-blur-md border border-white/20">
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Autonomous Contineo ERP Connected · NMAMIT 2026</span>
+          </div>
 
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r bg-white transition-transform md:translate-x-0 ${
-          menuOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="border-b p-5">
-          <h1 className="text-xl font-extrabold text-indigo-700">
-            YojanaSethu
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight leading-tight">
+            Welcome back, {studentName}!
           </h1>
-          <p className="mt-1 text-xs text-slate-500">Student Career Portal</p>
-          <button
-            aria-label="Close menu"
-            onClick={() => setMenuOpen(false)}
-            className="absolute right-3 top-4 md:hidden"
+
+          <p className="text-sm sm:text-base text-indigo-100 leading-relaxed max-w-2xl">
+            Your evidence-backed student career portal. Access your verified Contineo academic records,
+            practice DSA interview patterns, generate ATS resumes, and track campus placement drives.
+          </p>
+
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <Link
+              href="/student/resume-builder"
+              className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-xs font-bold text-indigo-700 shadow-md hover:bg-indigo-50 transition-all"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Build ATS Resume</span>
+            </Link>
+
+            <Link
+              href="/student/career-coach"
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-950/40 border border-white/30 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/20 transition-all backdrop-blur-sm"
+            >
+              <BrainCircuit className="w-4 h-4 text-purple-300" />
+              <span>AI Career Guidance</span>
+            </Link>
+
+            <Link
+              href="/student/placement-hub"
+              className="inline-flex items-center gap-2 rounded-xl bg-indigo-950/40 border border-white/30 px-4 py-2.5 text-xs font-bold text-white hover:bg-white/20 transition-all backdrop-blur-sm"
+            >
+              <Briefcase className="w-4 h-4 text-emerald-300" />
+              <span>View Active Drives</span>
+            </Link>
+          </div>
+        </div>
+
+        {/* Decorative background glow */}
+        <div className="absolute -right-12 -bottom-12 w-80 h-80 rounded-full bg-indigo-500/20 blur-3xl pointer-events-none" />
+      </section>
+
+      {/* KPI Overview Grid */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Link
+          href="/student/academic-truth"
+          className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-300 dark:hover:border-indigo-800 transition-all group"
+        >
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>Contineo CGPA</span>
+            <GraduationCap className="w-4 h-4 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">8.85</p>
+          <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+            <Radio className="w-3 h-3 animate-pulse" /> Verified Contineo Record
+          </p>
+        </Link>
+
+        <Link
+          href="/student/career-coach"
+          className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-purple-300 dark:hover:border-purple-800 transition-all group"
+        >
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>Placement Readiness</span>
+            <Target className="w-4 h-4 text-purple-600 dark:text-purple-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">84%</p>
+          <p className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
+            Super Dream Role Target
+          </p>
+        </Link>
+
+        <Link
+          href="/student/dsa-tracker"
+          className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-emerald-300 dark:hover:border-emerald-800 transition-all group"
+        >
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>DSA Patterns Solved</span>
+            <Code2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">14 / 20</p>
+          <p className="mt-1 text-[11px] text-slate-400">70% Pattern Mastery</p>
+        </Link>
+
+        <Link
+          href="/student/certificates"
+          className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-amber-300 dark:hover:border-amber-800 transition-all group"
+        >
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            <span>Verified Credentials</span>
+            <Award className="w-4 h-4 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <p className="mt-2 text-2xl font-black text-slate-900 dark:text-white">3 Proofs</p>
+          <p className="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+            Faculty Endorsed
+          </p>
+        </Link>
+      </section>
+
+      {/* Unified Modules Navigation Hub (Merged from All Sections & Existing Modules) */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
+            Career & Placement Modules Hub
+          </h2>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            Explore all dedicated tools, academic records, and career preparation engines.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {/* 1. Academic Records */}
+          <Link
+            href="/student/academic-truth"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
           >
-            <X size={20} />
-          </button>
-        </div>
-
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {nav.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                onClick={() => goTo(item.id)}
-                className={`flex w-full items-center gap-3 rounded-xl p-3 text-left text-sm font-medium ${
-                  active === item.id
-                    ? "bg-indigo-50 text-indigo-700"
-                    : "text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                <Icon size={19} />
-                {item.label}
-              </button>
-            );
-          })}
-
-          <div className="mt-5 border-t pt-4">
-            <p className="px-3 pb-2 text-xs font-bold uppercase text-slate-400">
-              Existing modules
-            </p>
-            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/academic-truth">
-              Academic Records
-            </Link>
-            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/cgpa-calculator">
-              CGPA Calculator
-            </Link>
-            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/roadmap">
-              Career Roadmap
-            </Link>
-            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/skill-passport">
-              Skill Passport
-            </Link>
-            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50" href="/student/placement-hub">
-              Placement Hub
-            </Link>
-            <Link className="block rounded-lg p-3 text-sm hover:bg-slate-50 text-indigo-600 font-medium" href="/login">
-              Switch Persona / Login
-            </Link>
-          </div>
-        </nav>
-
-        <div className="border-t border-slate-200 p-3 bg-slate-50/50">
-          <div className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-slate-200/80 shadow-sm">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center font-bold text-white text-xs shrink-0 shadow-sm">
-                {user?.full_name?.charAt(0) || user?.email?.charAt(0)?.toUpperCase() || 'S'}
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-bold text-slate-900 truncate">
-                  {user?.full_name || 'Student Account'}
-                </p>
-                <p className="text-[10px] text-slate-500 truncate">
-                  {user?.email || (user?.usn ? `USN: ${user.usn}` : 'NMAMIT Student')}
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => logout()}
-              className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0 ml-1"
-              title="Sign Out"
-              aria-label="Sign Out"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        </div>
-      </aside>
-
-      <main className="min-h-screen md:ml-64">
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-white/95 px-4 sm:px-8">
-          <div className="flex items-center gap-3">
-            <button
-              aria-label="Open menu"
-              onClick={() => setMenuOpen(true)}
-              className="md:hidden"
-            >
-              <Menu />
-            </button>
-            <h2 className="font-bold">My Career Dashboard</h2>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-indigo-50 border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700">
-              <GraduationCap size={14} />
-              <span>{user?.full_name || 'Student Career Desk'}</span>
-            </span>
-
-            <button
-              onClick={() => logout()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 text-xs font-semibold text-rose-600 hover:bg-rose-100 hover:border-rose-300 transition-colors shadow-sm"
-              title="Sign Out of student account"
-            >
-              <LogOut size={14} />
-              <span>Log Out</span>
-            </button>
-          </div>
-        </header>
-
-        <div className="mx-auto max-w-7xl space-y-8 p-4 sm:p-8">
-          <section id="overview" className="scroll-mt-24 rounded-3xl bg-gradient-to-r from-indigo-700 to-violet-600 p-7 text-white sm:p-10">
-            <div className="flex items-center gap-2 text-sm text-indigo-100">
-              <Sparkles size={17} /> Your student career workspace
-            </div>
-            <h2 className="mt-4 max-w-2xl text-3xl font-extrabold sm:text-4xl">
-              Build skills. Prepare for placements. Shape your future.
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-indigo-100">
-              Manage your resume, track programming practice, organize
-              certificates and explore placement opportunities in one place.
-            </p>
-            <button
-              onClick={() => goTo("resume")}
-              className="mt-6 rounded-xl bg-white px-5 py-3 text-sm font-bold text-indigo-700"
-            >
-              Build my resume →
-            </button>
-          </section>
-
-          <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            {[
-              { label: "Career readiness", value: "Not assessed", icon: Target },
-              { label: "Skills to develop", value: "4", icon: BrainCircuit },
-              { label: "Sample company drives", value: "3", icon: BriefcaseBusiness },
-              { label: "Certificates added", value: String(certificates.length), icon: Award },
-            ].map((stat) => {
-              const Icon = stat.icon;
-              return (
-                <div key={stat.label} className={cardClass}>
-                  <Icon className="text-indigo-600" size={23} />
-                  <p className="mt-4 text-sm text-slate-500">{stat.label}</p>
-                  <p className="mt-2 text-2xl font-extrabold">{stat.value}</p>
-                </div>
-              );
-            })}
-          </section>
-
-          <section className="grid gap-6 xl:grid-cols-2">
-            <div className={cardClass}>
-              <h3 className="text-lg font-bold">My skills</h3>
-              <p className="mt-1 text-sm text-slate-500">
-                Illustrative levels, not assessed results.
-              </p>
-              <div className="mt-6 space-y-5">
-                {skills.map((skill) => (
-                  <div key={skill.name}>
-                    <div className="mb-2 flex justify-between text-sm">
-                      <span>{skill.name}</span>
-                      <strong>{skill.level}%</strong>
-                    </div>
-                    <div className="h-2 overflow-hidden rounded-full bg-slate-100">
-                      <div
-                        className="h-full rounded-full bg-indigo-600"
-                        style={{ width: `${skill.level}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className={cardClass}>
-              <h3 className="text-lg font-bold">Recommended next steps</h3>
-              <div className="mt-4 space-y-3">
-                {[
-                  ["Create your resume", "Add your education, skills and projects.", "resume"],
-                  ["Practise DSA", "Track the topics you have completed.", "dsa"],
-                  ["Upload certificates", "Organize your achievements.", "certificates"],
-                ].map(([title, detail, id]) => (
-                  <button
-                    key={id}
-                    onClick={() => goTo(id)}
-                    className="flex w-full items-center gap-3 rounded-xl border p-4 text-left hover:bg-indigo-50"
-                  >
-                    <CheckCircle2 className="shrink-0 text-indigo-600" />
-                    <span className="flex-1">
-                      <strong className="block text-sm">{title}</strong>
-                      <span className="mt-1 block text-xs text-slate-500">{detail}</span>
-                    </span>
-                    <ArrowRight size={16} />
-                  </button>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section id="resume" className="scroll-mt-24 space-y-4">
             <div>
-              <h2 className="text-2xl font-extrabold">Resume Builder</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Fill in your information to preview a basic resume.
-              </p>
-            </div>
-            <div className="grid gap-6 xl:grid-cols-2">
-              <div className={cardClass}>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  {[
-                    ["name", "Full name"],
-                    ["email", "Email"],
-                    ["phone", "Phone"],
-                    ["education", "Education / college"],
-                    ["skills", "Technical skills"],
-                  ].map(([key, label]) => (
-                    <label key={key} className="text-sm font-medium">
-                      {label}
-                      <input
-                        className={inputClass}
-                        value={resume[key as keyof typeof resume]}
-                        onChange={(e) =>
-                          setResume({ ...resume, [key]: e.target.value })
-                        }
-                        placeholder={label}
-                      />
-                    </label>
-                  ))}
-                  <label className="text-sm font-medium sm:col-span-2">
-                    Career objective
-                    <textarea
-                      className={inputClass}
-                      rows={3}
-                      value={resume.objective}
-                      onChange={(e) =>
-                        setResume({ ...resume, objective: e.target.value })
-                      }
-                      placeholder="Describe the role you want."
-                    />
-                  </label>
-                  <label className="text-sm font-medium sm:col-span-2">
-                    Projects and experience
-                    <textarea
-                      className={inputClass}
-                      rows={4}
-                      value={resume.projects}
-                      onChange={(e) =>
-                        setResume({ ...resume, projects: e.target.value })
-                      }
-                      placeholder="Describe your projects and contributions."
-                    />
-                  </label>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <GraduationCap className="w-5 h-5" />
                 </div>
-                <button
-                  onClick={() => window.print()}
-                  className="mt-5 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white"
-                >
-                  <Download size={16} className="mr-2 inline" />
-                  Print / Save as PDF
-                </button>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Academics
+                </span>
               </div>
-
-              <div className={`${cardClass} print:border-0 print:shadow-none`}>
-                <h3 className="text-xl font-extrabold">{resume.name || "Your Name"}</h3>
-                <p className="mt-2 break-words text-sm text-slate-500">
-                  {[resume.email, resume.phone].filter(Boolean).join(" | ")}
-                </p>
-                <hr className="my-5" />
-                <h4 className="font-bold">CAREER OBJECTIVE</h4>
-                <p className="mt-2 whitespace-pre-wrap text-sm">{resume.objective || "Your objective will appear here."}</p>
-                <h4 className="mt-5 font-bold">EDUCATION</h4>
-                <p className="mt-2 whitespace-pre-wrap text-sm">{resume.education || "Your education details"}</p>
-                <h4 className="mt-5 font-bold">TECHNICAL SKILLS</h4>
-                <p className="mt-2 whitespace-pre-wrap text-sm">{resume.skills || "Your skills"}</p>
-                <h4 className="mt-5 font-bold">PROJECTS</h4>
-                <p className="mt-2 whitespace-pre-wrap text-sm">{resume.projects || "Your projects"}</p>
-              </div>
-            </div>
-          </section>
-
-<section id="coach" className="scroll-mt-24">
-            <div className={cardClass}>
-              <BrainCircuit size={28} className="text-indigo-600" />
-              <h2 className="mt-3 text-2xl font-extrabold">AI Career Coach</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                AI analysis will be connected later. Select a target role to
-                prepare your career plan.
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                Academic Records
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Immutable Contineo ERP verified grades, SGPA trajectory, and official transcript audit.
               </p>
-              <select
-                value={targetRole}
-                onChange={(e) => setTargetRole(e.target.value)}
-                className={inputClass}
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-indigo-600 dark:text-indigo-400 font-semibold">
+              <span>View Transcript</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 2. CGPA Calculator */}
+          <Link
+            href="/student/cgpa-calculator"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white transition-colors">
+                  <Calculator className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Planning
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                CGPA Calculator
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Simulate prospective semester grades and determine the exact credits needed to meet cutoff thresholds.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-emerald-600 dark:text-emerald-400 font-semibold">
+              <span>Simulate Target CGPA</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 3. Skill Passport */}
+          <Link
+            href="/student/skill-passport"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Verification
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                Skill Passport
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Cryptographically verifiable proof passport containing peer-reviewed skills and GitHub evidence.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-indigo-600 dark:text-indigo-400 font-semibold">
+              <span>Open Passport</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 4. Certificates */}
+          <Link
+            href="/student/certificates"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 group-hover:bg-amber-600 group-hover:text-white transition-colors">
+                  <Award className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Credentials
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                Certificates & Evidence
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Submit course certificates, hackathon awards, and licenses for faculty review and endorsement.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-amber-600 dark:text-amber-400 font-semibold">
+              <span>Manage Credentials</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 5. AI Career Coach */}
+          <Link
+            href="/student/career-coach"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                  <BrainCircuit className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  AI Guidance
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                AI Career Coach
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Predict placement readiness, discover high-impact tech stacks, and close skill gaps for target roles.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-purple-600 dark:text-purple-400 font-semibold">
+              <span>Get AI Assessment</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 6. Career Roadmap */}
+          <Link
+            href="/student/roadmap"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-cyan-50 dark:bg-cyan-950/50 text-cyan-600 dark:text-cyan-400 group-hover:bg-cyan-600 group-hover:text-white transition-colors">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Roadmap
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                Career Roadmap
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Step-by-step 30-day targeted preparation plan with weekly milestones for Tier 1 campus drives.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-cyan-600 dark:text-cyan-400 font-semibold">
+              <span>View Weekly Plan</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 7. Resume Builder */}
+          <Link
+            href="/student/resume-builder"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 group-hover:bg-rose-600 group-hover:text-white transition-colors">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Tools
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                Resume Builder
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Build ATS-optimized resumes with real-time paper preview, auto-fill from ERP records, and PDF export.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-rose-600 dark:text-rose-400 font-semibold">
+              <span>Generate Resume</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 8. DSA Tracker */}
+          <Link
+            href="/student/dsa-tracker"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400 group-hover:bg-teal-600 group-hover:text-white transition-colors">
+                  <Code2 className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Coding
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                DSA Practice Tracker
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Checklist of core algorithmic coding patterns asked in technical campus interviews.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-teal-600 dark:text-teal-400 font-semibold">
+              <span>Track DSA Progress</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 9. Learn Programming */}
+          <Link
+            href="/student/learn-programming"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Learning
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                Learn Programming
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Interactive language cheatsheets, code snippets, and concepts across Python, Java, C++, and TypeScript.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-indigo-600 dark:text-indigo-400 font-semibold">
+              <span>Start Learning Track</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 10. Placement Hub */}
+          <Link
+            href="/student/placement-hub"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                  <Briefcase className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Drives
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                Placement Transparency Hub
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Active campus drives, verified Contineo eligibility checks, drive deadlines, and direct applications.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-blue-600 dark:text-blue-400 font-semibold">
+              <span>Explore Live Drives</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+
+          {/* 11. Placement History */}
+          <Link
+            href="/student/placement-history"
+            className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <div className="p-2.5 rounded-xl bg-violet-50 dark:bg-violet-950/50 text-violet-600 dark:text-violet-400 group-hover:bg-violet-600 group-hover:text-white transition-colors">
+                  <BarChart3 className="w-5 h-5" />
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500">
+                  Analytics
+                </span>
+              </div>
+              <h3 className="font-bold text-sm text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                Placement History
+              </h3>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                Historical salary benchmarks, department-wise placement percentages, and top hiring partner analytics.
+              </p>
+            </div>
+            <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-violet-600 dark:text-violet-400 font-semibold">
+              <span>View CTC Benchmarks</span>
+              <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+            </div>
+          </Link>
+        </div>
+      </section>
+
+      {/* Skills Snapshot & Recent Drives Section */}
+      <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Left Column: Skills Snapshot (6 cols) */}
+        <div className="lg:col-span-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">
+              Verified Technical Skills
+            </h3>
+            <Link
+              href="/student/skill-passport"
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+            >
+              Skill Passport →
+            </Link>
+          </div>
+
+          <div className="space-y-4 pt-2">
+            {skills.map((skill) => (
+              <div key={skill.name}>
+                <div className="flex justify-between text-xs font-semibold mb-1">
+                  <span className="text-slate-700 dark:text-slate-300">{skill.name}</span>
+                  <span className="text-indigo-600 dark:text-indigo-400">{skill.level}%</span>
+                </div>
+                <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full"
+                    style={{ width: `${skill.level}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right Column: Upcoming Campus Drives Preview (6 cols) */}
+        <div className="lg:col-span-6 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-base text-slate-900 dark:text-white">
+              Upcoming Placement Drives
+            </h3>
+            <Link
+              href="/student/placement-hub"
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+            >
+              All Drives →
+            </Link>
+          </div>
+
+          <div className="space-y-3 pt-1">
+            {recentDrives.map((drive, i) => (
+              <div
+                key={i}
+                className="p-3.5 rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 flex items-center justify-between text-xs"
               >
-                <option>AI Engineer</option>
-                <option>Software Developer</option>
-                <option>Data Analyst</option>
-                <option>Frontend Developer</option>
-                <option>Backend Developer</option>
-              </select>
-              <div className="mt-4 rounded-xl bg-indigo-50 p-4 text-sm text-indigo-900">
-                Your selected goal: <strong>{targetRole}</strong>. Focus on
-                fundamentals, projects, assessments and interview preparation.
-              </div>
-              <p className="mt-3 text-xs text-slate-400">
-                This is general guidance, not a live AI-generated assessment.
-              </p>
-            </div>
-          </section>
-
-          <section id="learn" className="scroll-mt-24">
-            <div className={cardClass}>
-              <h2 className="text-2xl font-extrabold">Learn Programming</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Choose a language and track the fundamentals you complete.
-              </p>
-              <select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-                className={inputClass}
-              >
-                <option>Python</option>
-                <option>Java</option>
-                <option>C++</option>
-              </select>
-              <div className="mt-5 space-y-3">
-                {["Variables and types", "Conditions and loops", "Functions", "Arrays and strings", "Object-oriented programming", "Basic input/output"].map((topic) => {
-                  const key = `${language}:${topic}`;
-                  return (
-                    <label key={key} className="flex items-center gap-3 rounded-xl border p-3 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={done.includes(key)}
-                        onChange={() => setDone(done.includes(key) ? done.filter((x) => x !== key) : [...done, key])}
-                      />
-                      {topic}
-                    </label>
-                  );
-                })}
-              </div>
-              <p className="mt-4 text-sm font-semibold text-indigo-700">
-                Completed: {done.length} topics across your selected languages
-              </p>
-            </div>
-          </section>
-
-          <section id="dsa" className="scroll-mt-24">
-            <div className={cardClass}>
-              <h2 className="text-2xl font-extrabold">DSA Practice Tracker</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Check off topics as you practise them. Coding execution is not included.
-              </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                {topics.map((topic) => (
-                  <label key={topic} className="flex items-center gap-3 rounded-xl border p-4 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={done.includes(`DSA:${topic}`)}
-                      onChange={() => {
-                        const key = `DSA:${topic}`;
-                        setDone(done.includes(key) ? done.filter((x) => x !== key) : [...done, key]);
-                      }}
-                    />
-                    {topic}
-                  </label>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section id="certificates" className="scroll-mt-24">
-            <div className={cardClass}>
-              <h2 className="text-2xl font-extrabold">Certificates</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Choose PDF or image files to list them in this browser session.
-                This does not upload them to a server or verify authenticity.
-              </p>
-              <label className="mt-5 inline-flex cursor-pointer items-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white">
-                <Upload size={18} /> Select certificate files
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  className="hidden"
-                  onChange={(e) => setCertificates([...certificates, ...Array.from(e.target.files || [])])}
-                />
-              </label>
-              <div className="mt-5 space-y-3">
-                {certificates.map((file, index) => (
-                  <div key={`${file.name}-${index}`} className="flex items-center gap-3 rounded-xl border p-3">
-                    <FileText className="text-indigo-600" />
-                    <span className="flex-1 break-all text-sm">{file.name}</span>
-                    <span className="text-xs text-amber-700">Pending review</span>
-                    <button aria-label={`Remove ${file.name}`} onClick={() => setCertificates(certificates.filter((_, i) => i !== index))}>
-                      <Trash2 size={17} className="text-rose-600" />
-                    </button>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <strong className="text-slate-900 dark:text-white">{drive.company}</strong>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                      {drive.tier}
+                    </span>
                   </div>
-                ))}
-                {certificates.length === 0 && <p className="text-sm text-slate-400">No certificates selected yet.</p>}
-              </div>
-            </div>
-          </section>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{drive.role}</p>
+                </div>
 
-          <section id="placements" className="scroll-mt-24">
-            <div className={cardClass}>
-              <h2 className="text-2xl font-extrabold">Placement History</h2>
-              <p className="mt-2 text-sm text-slate-500">
-                Illustrative records only. Replace with verified college placement data.
-              </p>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <label className="flex items-center gap-2 rounded-xl border px-3">
-                  <Search size={18} className="text-slate-400" />
-                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search companies or roles" className="w-full py-3 text-sm outline-none" />
-                </label>
-                <select value={year} onChange={(e) => setYear(e.target.value)} className="rounded-xl border p-3 text-sm">
-                  <option value="all">All years</option>
-                  <option value="2026">2026</option>
-                  <option value="2025">2025</option>
-                  <option value="2024">2024</option>
-                </select>
+                <div className="text-right">
+                  <span className="font-extrabold text-emerald-600 dark:text-emerald-400 block">
+                    {drive.ctc}
+                  </span>
+                  <span className="text-[10px] text-slate-400 flex items-center gap-1 justify-end">
+                    <Clock className="w-3 h-3" /> {drive.deadline}
+                  </span>
+                </div>
               </div>
-              <div className="mt-5 space-y-3">
-                {filteredCompanies.map((company) => (
-                  <div key={company.name} className="flex flex-col gap-2 rounded-xl border p-4 sm:flex-row sm:items-center">
-                    <div className="flex-1">
-                      <h3 className="font-bold">{company.name}</h3>
-                      <p className="mt-1 text-sm text-slate-500">{company.role} · {company.year}</p>
-                    </div>
-                    <span className="text-sm font-semibold text-indigo-700">{company.package}</span>
-                  </div>
-                ))}
-                {filteredCompanies.length === 0 && <p className="text-sm text-slate-500">No matching companies found.</p>}
-              </div>
-            </div>
-          </section>
-
-          <footer className="border-t py-5 text-xs text-slate-400">
-            YojanaSethu Student Portal · Frontend prototype
-          </footer>
-</div>
-      </main>
+            ))}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
