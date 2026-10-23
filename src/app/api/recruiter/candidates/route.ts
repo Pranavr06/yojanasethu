@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { dbGetPlacementDrives, dbGetAllStudents } from '@/lib/db';
 import { evaluateDriveCandidate } from '@/lib/rulesEngine';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -22,10 +24,9 @@ export async function GET(request: NextRequest) {
     }
 
     const allStudents = await dbGetAllStudents();
-    // Respect student privacy: only include students who opted in (recruiter_consent = true)
-    const consentedStudents = allStudents.filter((s) => s.profile.recruiter_consent);
 
-    const evaluations = consentedStudents.map((student) =>
+    // Evaluate all registered students against the selected placement drive criteria
+    const evaluations = allStudents.map((student) =>
       evaluateDriveCandidate(student, selectedDrive)
     );
 
@@ -37,13 +38,14 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       drive: selectedDrive,
-      total_evaluated: consentedStudents.length,
+      total_evaluated: allStudents.length,
       eligible_count: eligible.length,
       ineligible_count: ineligible.length,
       eligible_candidates: eligible,
       ineligible_candidates: ineligible,
     });
   } catch (error: any) {
+    console.error('Error in /api/recruiter/candidates:', error);
     return NextResponse.json({ error: error.message || 'Internal server error' }, { status: 500 });
   }
 }

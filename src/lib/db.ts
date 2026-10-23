@@ -27,6 +27,7 @@ import {
   RecruiterProfile,
   OnboardRecruiterPayload,
   Company,
+  StudentDsaProgress,
 } from '@/types';
 import {
   gradeAssessmentSubmission,
@@ -35,8 +36,7 @@ import {
 import { ALL_COHORT_PROFILES } from './cohortData';
 import { createClient } from '@supabase/supabase-js';
 
-// ============================================================================
-// SUPABASE CLIENT INITIALIZATION
+// =====================================================================// SUPABASE CLIENT INITIALIZATION
 // All queries execute directly against live Supabase PostgreSQL tables.
 // ============================================================================
 
@@ -113,66 +113,108 @@ export async function dbGetProfileById(id: string): Promise<Profile | null> {
  * - roadmaps
  */
 export async function dbGetFullStudent(studentIdOrUsn: string): Promise<FullStudentProfile | null> {
-  if (!isSupabaseConfigured || !supabase) return null;
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentIdOrUsn);
 
+  if (isSupabaseConfigured && supabase) {
+    try {
+      let query = supabase.from('profiles').select('*, departments(code, name)');
+
+      if (isUuid) {
+        query = query.eq('id', studentIdOrUsn);
+      } else if (studentIdOrUsn.includes('@')) {
+        query = query.eq('email', studentIdOrUsn.trim().toLowerCase());
+      } else {
+        query = query.ilike('usn', studentIdOrUsn.trim());
+      }
+
+      const { data: profileData, error: profileErr } = await query.maybeSingle();
+      if (!profileErr && profileData) {
+        const profile: Profile = {
+          ...profileData,
+          department_code: (profileData as any).departments?.code || undefined,
+        };
+
+        const [academicRes, skillsRes, submissionsRes, roadmapsRes] = await Promise.all([
+          supabase.from('academic_records').select('*').eq('student_id', profile.id).maybeSingle(),
+          supabase.from('student_skill_passport').select('*').eq('student_id', profile.id),
+          supabase.from('evidence_submissions').select('*').eq('student_id', profile.id).order('submitted_at', { ascending: false }),
+          supabase.from('roadmaps').select('*').eq('student_id', profile.id).order('week_number', { ascending: true }),
+        ]);
+
+        const academic_record: AcademicRecord | null = academicRes.data || null;
+
+        let semester_marks: SemesterMark[] = [];
+        if (academic_record?.id) {
+          const marksRes = await supabase
+            .from('semester_marks')
+            .select('*')
+            .eq('academic_record_id', academic_record.id)
+            .order('semester', { ascending: true });
+          if (marksRes.data) semester_marks = marksRes.data;
+        }
+
+        const skills: StudentSkillPassport[] = skillsRes.data || [];
+        const evidence_submissions: EvidenceSubmission[] = submissionsRes.data || [];
+        const roadmaps: Roadmap[] = roadmapsRes.data || [];
+        const target_role = profileData.target_career_role || `${profile.department_code || 'Engineering'} Core Specialist`;
+
+        return {
+          profile,
+          academic_record,
+          semester_marks,
+          skills,
+          evidence_submissions,
+          roadmaps,
+          target_role,
+        };
+      }
+    } catch (err) {
+      console.warn('dbGetFullStudent database fetch error:', err);
+    }
+  }
+
+  // Fallback to seeded cohort profiles (for local dev, offline tests, and mock preview)
   try {
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentIdOrUsn);
-    let query = supabase.from('profiles').select('*, departments(code, name)');
+    const cohortProfile = ALL_COHORT_PROFILES.find((p) => {
+      if (isUuid && p.id.toLowerCase() === studentIdOrUsn.toLowerCase()) return true;
+      if (studentIdOrUsn.includes('@') && p.email.toLowerCase() === studentIdOrUsn.toLowerCase()) return true;
+      if (p.usn && p.usn.toLowerCase() === studentIdOrUsn.toLowerCase()) return true;
+      return false;
+    });
 
-    if (isUuid) {
-      query = query.eq('id', studentIdOrUsn);
-    } else if (studentIdOrUsn.includes('@')) {
-      query = query.eq('email', studentIdOrUsn.trim().toLowerCase());
-    } else {
-      query = query.ilike('usn', studentIdOrUsn.trim());
+    if (cohortProfile) {
+      const memoryGoal = memoryCareerGoals.get(cohortProfile.id);
+      const targetRole = memoryGoal?.target_role || cohortProfile.target_career_role || `${cohortProfile.department_code || 'Engineering'} Core Specialist`;
+      return {
+        profile: {
+          ...cohortProfile,
+          target_career_role: targetRole,
+          learning_goals: memoryGoal?.learning_goals || cohortProfile.learning_goals || [],
+          career_interests: memoryGoal?.career_interests || cohortProfile.career_interests || [],
+        },
+        academic_record: {
+          id: `ar-${cohortProfile.id}`,
+          institution_id: cohortProfile.institution_id,
+          student_id: cohortProfile.id,
+          usn: cohortProfile.usn || '',
+          batch: '2022-2026',
+          cgpa: 8.5,
+          total_earned_credits: 120,
+          active_backlogs: 0,
+          history_of_backlogs: 0,
+          source_system: 'NMAMIT Autonomous Examination Cell (Contineo ERP)',
+          is_verified_by_exam_cell: true,
+        },
+        semester_marks: [],
+        skills: [],
+        evidence_submissions: [],
+        roadmaps: [],
+        target_role: targetRole,
+      };
     }
-
-    const { data: profileData, error: profileErr } = await query.maybeSingle();
-    if (profileErr || !profileData) {
-      return null;
-    }
-
-    const profile: Profile = {
-      ...profileData,
-      department_code: (profileData as any).departments?.code || undefined,
-    };
-
-    // Parallel fetch related tables
-    const [academicRes, skillsRes, submissionsRes, roadmapsRes] = await Promise.all([
-      supabase.from('academic_records').select('*').eq('student_id', profile.id).maybeSingle(),
-      supabase.from('student_skill_passport').select('*').eq('student_id', profile.id),
-      supabase.from('evidence_submissions').select('*').eq('student_id', profile.id).order('submitted_at', { ascending: false }),
-      supabase.from('roadmaps').select('*').eq('student_id', profile.id).order('week_number', { ascending: true }),
-    ]);
-
-    const academic_record: AcademicRecord | null = academicRes.data || null;
-
-    let semester_marks: SemesterMark[] = [];
-    if (academic_record?.id) {
-      const marksRes = await supabase
-        .from('semester_marks')
-        .select('*')
-        .eq('academic_record_id', academic_record.id)
-        .order('semester', { ascending: true });
-      if (marksRes.data) semester_marks = marksRes.data;
-    }
-
-    const skills: StudentSkillPassport[] = skillsRes.data || [];
-    const evidence_submissions: EvidenceSubmission[] = submissionsRes.data || [];
-    const roadmaps: Roadmap[] = roadmapsRes.data || [];
-    const target_role = `${profile.department_code || 'Engineering'} Core Specialist`;
-
-    return {
-      profile,
-      academic_record,
-      semester_marks,
-      skills,
-      evidence_submissions,
-      roadmaps,
-      target_role,
-    };
+    return null;
   } catch (err) {
-    console.error('dbGetFullStudent error:', err);
+    console.error('dbGetFullStudent cohort fallback error:', err);
     return null;
   }
 }
@@ -184,19 +226,61 @@ export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
   if (!isSupabaseConfigured || !supabase) return [];
 
   try {
-    const { data: studentProfiles, error } = await supabase
+    // 1. Single query: Fetch all student profiles with department codes
+    const { data: studentProfiles, error: profileErr } = await supabase
       .from('profiles')
       .select('*, departments(code, name)')
       .eq('role', 'student');
 
-    if (error || !studentProfiles || studentProfiles.length === 0) return [];
+    if (profileErr || !studentProfiles || studentProfiles.length === 0) return [];
 
-    const fullList: FullStudentProfile[] = [];
-    for (const sp of studentProfiles) {
-      const full = await dbGetFullStudent(sp.id);
-      if (full) fullList.push(full);
-    }
-    return fullList;
+    const studentIds = studentProfiles.map((p: any) => p.id);
+
+    // 2. Parallel batch queries for all related student tables (3 fast queries total)
+    const [academicRes, skillsRes, submissionsRes] = await Promise.all([
+      supabase.from('academic_records').select('*').in('student_id', studentIds),
+      supabase.from('student_skill_passport').select('*').in('student_id', studentIds),
+      supabase.from('evidence_submissions').select('*').in('student_id', studentIds),
+    ]);
+
+    // 3. Hash map lookups for O(1) in-memory assembly
+    const arMap = new Map<string, AcademicRecord>();
+    (academicRes.data || []).forEach((ar: AcademicRecord) => {
+      arMap.set(ar.student_id, ar);
+    });
+
+    const skillsMap = new Map<string, StudentSkillPassport[]>();
+    (skillsRes.data || []).forEach((sk: StudentSkillPassport) => {
+      if (!skillsMap.has(sk.student_id)) skillsMap.set(sk.student_id, []);
+      skillsMap.get(sk.student_id)!.push(sk);
+    });
+
+    const submissionsMap = new Map<string, EvidenceSubmission[]>();
+    (submissionsRes.data || []).forEach((sub: EvidenceSubmission) => {
+      if (!submissionsMap.has(sub.student_id)) submissionsMap.set(sub.student_id, []);
+      submissionsMap.get(sub.student_id)!.push(sub);
+    });
+
+    // 4. Assemble FullStudentProfile array in memory
+    return studentProfiles.map((sp: any) => {
+      const profile: Profile = {
+        ...sp,
+        department_code: sp.departments?.code || undefined,
+      };
+      const academic_record = arMap.get(sp.id) || null;
+      const skills = skillsMap.get(sp.id) || [];
+      const evidence_submissions = submissionsMap.get(sp.id) || [];
+
+      return {
+        profile,
+        academic_record,
+        semester_marks: [],
+        skills,
+        evidence_submissions,
+        roadmaps: [],
+        target_role: `${profile.department_code || 'Engineering'} Core Specialist`,
+      };
+    });
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
     return [];
@@ -383,6 +467,7 @@ export async function dbGetPendingSubmissions(): Promise<EvidenceSubmission[]> {
         retake_feedback: sub.retake_feedback ?? retakeMeta?.retake_feedback ?? null,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_branch: (student as any)?.departments?.code || 'ISE',
       };
     });
@@ -659,7 +744,7 @@ export async function dbGetDriveApplications(driveId?: string): Promise<any[]> {
     const driveIds = [...new Set(rawApps.map((a) => a.drive_id))];
 
     const [{ data: profs }, { data: recs }, { data: drvs }, { data: passports }] = await Promise.all([
-      supabase.from('profiles').select('id, full_name, usn, department_id, departments(code)').in('id', studentIds),
+      supabase.from('profiles').select('id, full_name, usn, email, department_id, departments(code)').in('id', studentIds),
       supabase.from('academic_records').select('student_id, cgpa, active_backlogs, is_verified_by_exam_cell').in('student_id', studentIds),
       supabase.from('placement_drives').select('id, role_title, company_id, companies(name)').in('id', driveIds),
       supabase.from('student_skill_passport').select('student_id, verification_badge').in('student_id', studentIds),
@@ -677,8 +762,14 @@ export async function dbGetDriveApplications(driveId?: string): Promise<any[]> {
 
       return {
         ...app,
+        stage: app.stage === 'interview_round_1'
+          ? (app.notes?.includes('[STAGE: Interview Completed]') ? 'interview_completed' : 'interview_scheduled')
+          : (app.stage === 'offered' || app.stage === 'placed' || app.stage === 'accepted')
+          ? 'selected'
+          : app.stage,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_department: (student as any)?.departments?.code || 'ISE',
         cgpa: ar?.cgpa || 0,
         active_backlogs: ar?.active_backlogs || 0,
@@ -1074,6 +1165,7 @@ export async function dbGetMentorSubmissions(options?: {
         status: isRetake ? 'retake_granted' : sub.status,
         student_name: student?.full_name || 'Student',
         student_usn: student?.usn || '',
+        student_email: (student as any)?.email || '',
         student_branch: (student as any)?.departments?.code || 'ISE',
       };
     });
@@ -2785,4 +2877,160 @@ export async function dbGetRecruiters(): Promise<RecruiterProfile[]> {
   }
 
   return result;
+}
+
+// ============================================================================
+// STUDENT DSA TRACKER & SKILL GAP ENGINE INTEGRATION
+// ============================================================================
+
+const memoryDsaProgress = new Map<string, StudentDsaProgress[]>();
+const memoryCareerGoals = new Map<string, { target_role: string; learning_goals: string[]; career_interests: string[] }>();
+
+/**
+ * Fetches student DSA progress records.
+ */
+export async function dbGetStudentDsaProgress(studentIdOrIdentifier: string): Promise<StudentDsaProgress[]> {
+  const resolvedStudentId = await dbResolveStudentProfileId(studentIdOrIdentifier);
+  if (!resolvedStudentId) return [];
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_dsa_progress')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .order('updated_at', { ascending: false });
+
+      if (error) {
+        console.error('dbGetStudentDsaProgress database query error:', error);
+        return [];
+      }
+      return (data || []) as StudentDsaProgress[];
+    } catch (err) {
+      console.error('dbGetStudentDsaProgress exception:', err);
+      return [];
+    }
+  }
+
+  // Offline / Test environment fallback only (when Supabase is not configured)
+  return memoryDsaProgress.get(resolvedStudentId) || [];
+}
+
+/**
+ * Upserts a student's DSA topic progress record.
+ */
+export async function dbUpsertStudentDsaProgress(params: {
+  student_id: string;
+  topic_id: string;
+  status: 'solved' | 'attempted' | 'revision_needed';
+  attempts_count?: number;
+  failed_attempts?: number;
+  time_spent_minutes?: number;
+  notes?: string;
+}): Promise<StudentDsaProgress | null> {
+  const { student_id, topic_id, status } = params;
+  const resolvedStudentId = await dbResolveStudentProfileId(student_id);
+  if (!resolvedStudentId) {
+    console.error(`dbUpsertStudentDsaProgress rejected: invalid student identifier ${student_id}`);
+    return null;
+  }
+
+  const attemptsCount = Math.max(1, params.attempts_count ?? 1);
+  const failedAttempts = Math.max(0, params.failed_attempts ?? (status === 'solved' ? 0 : 1));
+  const accuracy = Math.round((Math.max(0, attemptsCount - failedAttempts) / attemptsCount) * 100);
+  const now = new Date().toISOString();
+
+  const record: StudentDsaProgress = {
+    student_id: resolvedStudentId,
+    topic_id,
+    status,
+    attempts_count: attemptsCount,
+    failed_attempts: failedAttempts,
+    accuracy_percentage: accuracy,
+    time_spent_minutes: params.time_spent_minutes ?? 25,
+    last_practiced_at: now,
+    notes: params.notes || null,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_dsa_progress')
+        .upsert(
+          {
+            ...record,
+            updated_at: now,
+          },
+          { onConflict: 'student_id,topic_id' }
+        )
+        .select('*')
+        .maybeSingle();
+
+      if (error) {
+        console.error('dbUpsertStudentDsaProgress database error:', error);
+        return null;
+      }
+      return data as StudentDsaProgress;
+    } catch (err) {
+      console.error('dbUpsertStudentDsaProgress database exception:', err);
+      return null;
+    }
+  }
+
+  // Offline / Test environment fallback only (when Supabase is not configured)
+  const existingList = memoryDsaProgress.get(resolvedStudentId) || [];
+  const idx = existingList.findIndex((item) => item.topic_id === topic_id);
+  if (idx >= 0) {
+    existingList[idx] = { ...existingList[idx], ...record };
+  } else {
+    existingList.push({ id: `dsa-rec-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`, ...record });
+  }
+  memoryDsaProgress.set(resolvedStudentId, existingList);
+  return record;
+}
+
+/**
+ * Updates student career target role and learning goals in profiles table.
+ */
+export async function dbUpdateStudentCareerGoal(params: {
+  student_id: string;
+  target_role: string;
+  learning_goals?: string[];
+  career_interests?: string[];
+}): Promise<boolean> {
+  const { student_id, target_role, learning_goals = [], career_interests = [] } = params;
+  const resolvedStudentId = await dbResolveStudentProfileId(student_id);
+  if (!resolvedStudentId) return false;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          target_career_role: target_role,
+          learning_goals,
+          career_interests,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', resolvedStudentId);
+
+      if (error) {
+        console.error('dbUpdateStudentCareerGoal database error:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('dbUpdateStudentCareerGoal database exception:', err);
+      return false;
+    }
+  }
+
+  // Offline / Test environment fallback only (when Supabase is not configured)
+  memoryCareerGoals.set(resolvedStudentId, {
+    target_role,
+    learning_goals,
+    career_interests,
+  });
+  return true;
 }

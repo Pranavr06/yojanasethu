@@ -94,6 +94,9 @@ export interface Profile {
   assigned_specializations?: string[] | null;
   company_name?: string | null;
   recruiter_title?: string | null;
+  target_career_role?: string | null;
+  learning_goals?: string[] | null;
+  career_interests?: string[] | null;
   created_at?: string;
   updated_at?: string;
 }
@@ -540,4 +543,89 @@ export interface VerifiedCredentialSummary {
   assessment_score: number;
   verification_badge: boolean;
   credential_url?: string | null;
+}
+
+// ========================================================
+// DSA PROGRESS & SKILL GAP ANALYZER TYPES
+// ========================================================
+
+export interface StudentDsaProgress {
+  id?: string;
+  student_id: string;
+  topic_id: string;
+  status: 'solved' | 'attempted' | 'revision_needed';
+  attempts_count: number;
+  failed_attempts: number;
+  accuracy_percentage: number;
+  time_spent_minutes: number;
+  last_practiced_at: string;
+  notes?: string | null;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type TargetCareerRole = 'Software Developer' | 'AI/ML Engineer' | 'Cybersecurity Analyst';
+
+export type SkillStatus = 'verified_strength' | 'demonstrated_gap' | 'unassessed_missing';
+export type SkillPriority = 'critical' | 'high' | 'medium';
+
+export interface EvaluatedSkill {
+  skill_name: string;
+  category: string;
+  status: SkillStatus;
+  priority: SkillPriority;
+  required_level: 'foundational' | 'intermediate' | 'advanced';
+  demonstrated_level: 'none' | 'foundational' | 'intermediate' | 'advanced';
+  weight: number;
+  importance: 'mandatory' | 'preferred';
+  evidence_summary: string;
+  reason: string;
+  recommended_action?: {
+    activity: string;
+    resource_title: string;
+    resource_url: string;
+    resource_type: 'practice' | 'project' | 'course' | 'doc';
+    measurable_completion_criterion: string;
+  };
+}
+
+export interface DsaPatternMetrics {
+  total_patterns: number;
+  solved_count: number;
+  overall_accuracy: number;
+  total_attempts: number;
+  failed_attempts: number;
+  solved_by_difficulty: {
+    easy: number;
+    medium: number;
+    hard: number;
+  };
+  weak_categories: {
+    category: string;
+    accuracy: number;
+    unsolved_critical: number;
+  }[];
+  strong_categories: string[];
+  algorithmic_readiness_score: number;
+}
+
+export interface SkillGapAnalysisResult {
+  student_id: string;
+  student_name: string;
+  target_role: TargetCareerRole;
+  role_readiness_score: number;
+  verified_strengths_count: number;
+  demonstrated_gaps_count: number;
+  unassessed_skills_count: number;
+  skills: EvaluatedSkill[];
+  dsa_metrics: DsaPatternMetrics;
+  prioritized_roadmap: {
+    priority: SkillPriority;
+    skill_or_topic: string;
+    reason: string;
+    suggested_activity: string;
+    measurable_completion_criterion: string;
+    resource_link?: string;
+  }[];
+  transparency_note: string;
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Code2,
   CheckCircle2,
@@ -14,8 +14,16 @@ import {
   Flame,
   Award,
   Layers,
+  AlertTriangle,
+  RefreshCw,
+  PlusCircle,
+  TrendingDown,
+  BrainCircuit,
+  ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/lib/authContext';
+import { StudentDsaProgress, DsaPatternMetrics } from '@/types';
 
 interface DSATopic {
   id: string;
@@ -226,34 +234,154 @@ const DSA_DATA: DSATopic[] = [
 ];
 
 export default function DSATrackerPage() {
+  const { user } = useAuth();
   const [solvedIds, setSolvedIds] = useState<string[]>([]);
+  const [recordsMap, setRecordsMap] = useState<Record<string, StudentDsaProgress>>({});
+  const [patternMetrics, setPatternMetrics] = useState<DsaPatternMetrics | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [difficultyFilter, setDifficultyFilter] = useState<string>('All');
   const [search, setSearch] = useState<string>('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState<string | null>(null);
 
-  // Persist solved in localStorage
-  useEffect(() => {
+  // Fetch student DSA progress from backend
+  const fetchDsaProgress = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const res = await fetch('/api/student/dsa');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.records && Array.isArray(data.records)) {
+          const rMap: Record<string, StudentDsaProgress> = {};
+          const solved: string[] = [];
+
+          data.records.forEach((r: StudentDsaProgress) => {
+            rMap[r.topic_id] = r;
+            if (r.status === 'solved') {
+              solved.push(r.topic_id);
+            }
+          });
+
+          setRecordsMap(rMap);
+          setSolvedIds(solved);
+          if (data.patternMetrics) {
+            setPatternMetrics(data.patternMetrics);
+          }
+          try {
+            localStorage.setItem('yojanasethu_dsa_solved', JSON.stringify(solved));
+          } catch {}
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not fetch server DSA records, using local fallback:', e);
+    } finally {
+      setIsLoading(false);
+    }
+
+    // Fallback to localStorage if offline
     try {
       const saved = localStorage.getItem('yojanasethu_dsa_solved');
       if (saved) {
         setSolvedIds(JSON.parse(saved));
       } else {
-        // default starter solved topics
-        setSolvedIds(['dsa-1', 'dsa-2', 'dsa-6', 'dsa-8', 'dsa-10', 'dsa-13', 'dsa-19']);
+        setSolvedIds([]);
       }
     } catch (e) {
       console.error(e);
+      setSolvedIds([]);
     }
   }, []);
 
-  const toggleSolved = (id: string) => {
-    const updated = solvedIds.includes(id)
+  useEffect(() => {
+    fetchDsaProgress();
+  }, [fetchDsaProgress]);
+
+  const toggleSolved = async (id: string) => {
+    const isCurrentlySolved = solvedIds.includes(id);
+    const newStatus = isCurrentlySolved ? 'attempted' : 'solved';
+    const updated = isCurrentlySolved
       ? solvedIds.filter((x) => x !== id)
       : [...solvedIds, id];
+
     setSolvedIds(updated);
     try {
       localStorage.setItem('yojanasethu_dsa_solved', JSON.stringify(updated));
-    } catch (e) {}
+    } catch {}
+
+    setIsSyncing(id);
+    try {
+      const currentRecord = recordsMap[id];
+      const attempts = (currentRecord?.attempts_count || 0) + 1;
+      const failed = isCurrentlySolved
+        ? (currentRecord?.failed_attempts || 0) + 1
+        : Math.max(0, currentRecord?.failed_attempts || 0);
+
+      const res = await fetch('/api/student/dsa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic_id: id,
+          status: newStatus,
+          attempts_count: attempts,
+          failed_attempts: failed,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.record) {
+          setRecordsMap((prev) => ({ ...prev, [id]: data.record }));
+        }
+        if (data.patternMetrics) {
+          setPatternMetrics(data.patternMetrics);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to sync DSA progress to server:', e);
+    } finally {
+      setIsSyncing(null);
+    }
+  };
+
+  const recordPracticeAttempt = async (id: string, wasFailed: boolean) => {
+    setIsSyncing(id);
+    try {
+      const currentRecord = recordsMap[id];
+      const attempts = (currentRecord?.attempts_count || 1) + 1;
+      const failed = wasFailed
+        ? (currentRecord?.failed_attempts || 0) + 1
+        : currentRecord?.failed_attempts || 0;
+      const status = wasFailed ? 'attempted' : (currentRecord?.status || 'solved');
+
+      const res = await fetch('/api/student/dsa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic_id: id,
+          status,
+          attempts_count: attempts,
+          failed_attempts: failed,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.record) {
+          setRecordsMap((prev) => ({ ...prev, [id]: data.record }));
+        }
+        if (data.patternMetrics) {
+          setPatternMetrics(data.patternMetrics);
+        }
+        if (status === 'solved' && !solvedIds.includes(id)) {
+          setSolvedIds((prev) => [...prev, id]);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to log attempt:', e);
+    } finally {
+      setIsSyncing(null);
+    }
   };
 
   const categories = ['All', ...Array.from(new Set(DSA_DATA.map((d) => d.category)))];
@@ -293,23 +421,49 @@ export default function DSATrackerPage() {
             </span>
           </div>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Track your mastery of recurring algorithmic interview patterns asked by top campus recruiters.
+            Track your mastery of recurring algorithmic interview patterns asked by top campus recruiters. Synced with your Skill Gap Engine.
           </p>
         </div>
 
-        {/* Global Progress Pill */}
-        <div className="flex items-center gap-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 px-4 rounded-2xl shadow-sm self-start sm:self-auto">
-          <div className="text-right">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block">Overall Mastery</span>
-            <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">
-              {solvedCount} / {totalCount} ({overallPercent}%)
-            </span>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center font-bold text-xs text-indigo-700 dark:text-indigo-300">
-            {overallPercent}%
+        {/* Global Progress Pill & Skill Gap Action */}
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/student/career-coach"
+            className="flex items-center gap-2 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 p-2.5 px-4 rounded-2xl text-xs font-bold transition-all shadow-sm"
+          >
+            <BrainCircuit className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+            <span>Analyze Skill Gap</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+
+          <div className="flex items-center gap-3 bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 p-2.5 px-4 rounded-2xl shadow-sm self-start sm:self-auto">
+            <div className="text-right">
+              <span className="text-[10px] uppercase font-bold text-slate-400 block">Overall Mastery</span>
+              <span className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400">
+                {solvedCount} / {totalCount} ({overallPercent}%)
+              </span>
+            </div>
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 flex items-center justify-center font-bold text-xs text-indigo-700 dark:text-indigo-300">
+              {overallPercent}%
+            </div>
           </div>
         </div>
       </div>
+
+      {/* High Failure / Weakness Alert (if detected by Skill Gap Engine) */}
+      {patternMetrics && patternMetrics.weak_categories && patternMetrics.weak_categories.length > 0 && (
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 p-4 text-xs flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            <h4 className="font-bold text-amber-900 dark:text-amber-200">
+              Algorithmic Weakness Flagged: High Failure Rate Detected
+            </h4>
+            <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+              Your average failure rate in <strong>{patternMetrics.weak_categories.map((w) => w.category).join(', ')}</strong> exceeds the placement benchmark (accuracy {patternMetrics.overall_accuracy}%). Prioritize revisiting these patterns before campus screening rounds.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -394,6 +548,9 @@ export default function DSATrackerPage() {
       <div className="space-y-3">
         {filteredData.map((item) => {
           const isDone = solvedIds.includes(item.id);
+          const record = recordsMap[item.id];
+          const isCurrentSyncing = isSyncing === item.id;
+
           return (
             <div
               key={item.id}
@@ -407,13 +564,17 @@ export default function DSATrackerPage() {
               <div className="flex items-start sm:items-center gap-3 min-w-0">
                 <button
                   type="button"
+                  disabled={isCurrentSyncing}
                   onClick={(e) => {
                     e.stopPropagation();
                     toggleSolved(item.id);
                   }}
                   className="mt-0.5 sm:mt-0 text-slate-400 hover:text-indigo-600 transition-colors shrink-0"
+                  aria-label={isDone ? 'Mark uncompleted' : 'Mark completed'}
                 >
-                  {isDone ? (
+                  {isCurrentSyncing ? (
+                    <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin" />
+                  ) : isDone ? (
                     <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                   ) : (
                     <Circle className="w-5 h-5" />
@@ -456,11 +617,41 @@ export default function DSATrackerPage() {
                       Asked by: <span className="text-indigo-600 dark:text-indigo-400">{item.targetCompany}</span>
                     </span>
                   </div>
+
+                  {/* Practice Accuracy & Attempts Details if logged */}
+                  {record && (
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 font-medium">
+                        Attempts: {record.attempts_count}
+                      </span>
+                      {record.failed_attempts > 0 && (
+                        <span className="px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 font-semibold">
+                          Failed: {record.failed_attempts}
+                        </span>
+                      )}
+                      <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold">
+                        Accuracy: {record.accuracy_percentage}%
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* Status Action */}
-              <div className="self-end sm:self-auto shrink-0">
+              {/* Status Action & Quick Practice Logger */}
+              <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                <button
+                  type="button"
+                  title="Log a failed submission (practice retry)"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    recordPracticeAttempt(item.id, true);
+                  }}
+                  className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/30 text-slate-400 hover:text-rose-600 text-xs font-semibold flex items-center gap-1 transition-colors"
+                >
+                  <TrendingDown className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Failed Attempt</span>
+                </button>
+
                 <span
                   className={`text-xs font-bold px-3 py-1.5 rounded-xl border ${
                     isDone
