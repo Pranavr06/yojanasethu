@@ -6,14 +6,15 @@ export const dynamic = 'force-dynamic';
 const STORAGE_BUCKET = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_BUCKET || 'documents';
 
 /**
- * GET /api/recruiter/resume/file?path=<cleanPath>
- * Proxies and streams the PDF document safely from Supabase Storage with inline headers.
+ * GET /api/recruiter/resume/file?path=<cleanPath>&download=<true|false>
+ * Proxies and streams the PDF document safely from Supabase Storage with inline/attachment headers.
  * Protects against CORS, iframe sandbox restrictions, and avoids leaking credentials.
  */
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const rawPath = searchParams.get('path');
+    const isDownload = searchParams.get('download') === 'true';
 
     if (!rawPath) {
       return NextResponse.json({ error: 'Storage path is required' }, { status: 400 });
@@ -34,6 +35,7 @@ export async function GET(request: NextRequest) {
     }
 
     const fileName = cleanPath.split('/').pop() || 'resume.pdf';
+    const disposition = isDownload ? `attachment; filename="${fileName}"` : `inline; filename="${fileName}"`;
 
     // 1. Download file buffer from Supabase Storage
     if (isSupabaseConfigured && supabase) {
@@ -46,7 +48,7 @@ export async function GET(request: NextRequest) {
         return new NextResponse(new Uint8Array(buffer), {
           headers: {
             'Content-Type': 'application/pdf',
-            'Content-Disposition': `inline; filename="${fileName}"`,
+            'Content-Disposition': disposition,
             'Cache-Control': 'private, max-age=3600',
           },
         });
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
     return new NextResponse(new Uint8Array(samplePdf), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${fileName}"`,
+        'Content-Disposition': disposition,
       },
     });
   } catch (error: any) {
@@ -98,8 +100,10 @@ BT
 50 720 Td
 (YojanaSethu Candidate Resume Document) Tj
 /F1 12 Tf
-0 -30 Td
-(File: ${title.slice(0, 40)}) Tj
+50 690 Td
+(File: ${title}) Tj
+50 670 Td
+(Verified by Contineo ERP & Academic Cell) Tj
 ET
 endstream
 endobj
@@ -109,12 +113,12 @@ xref
 0000000009 00000 n 
 0000000058 00000 n 
 0000000115 00000 n 
-0000000224 00000 n 
-0000000305 00000 n 
+0000000234 00000 n 
+0000000302 00000 n 
 trailer
 << /Size 6 /Root 1 0 R >>
 startxref
-478
+475
 %%EOF`;
 
   return Buffer.from(content, 'utf-8');

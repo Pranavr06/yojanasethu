@@ -139,3 +139,29 @@ export async function getSignedDocumentUrl(
     cleanPath,
   };
 }
+/**
+ * Deletes a document from Supabase Storage by its storage path.
+ */
+export async function deleteDocumentFromSupabaseStorage(
+  documentStoragePath: string
+): Promise<{ success: boolean; error?: string }> {
+  if (!documentStoragePath) return { success: true };
+
+  const cleanPath = documentStoragePath.replace(new RegExp(`^${STORAGE_BUCKET}/`), '');
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { error } = await supabase.storage.from(STORAGE_BUCKET).remove([cleanPath]);
+      if (error) {
+        console.warn('Supabase storage remove error:', error.message);
+        return { success: false, error: error.message };
+      }
+      return { success: true };
+    } catch (err: any) {
+      console.warn('Supabase storage remove exception:', err.message);
+      return { success: false, error: err.message };
+    }
+  }
+
+  return { success: true };
+}

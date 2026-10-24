@@ -6,6 +6,7 @@ import {
   Search,
   Filter,
   GraduationCap,
+  FileText,
   ShieldCheck,
   AlertTriangle,
   CheckCircle2,
@@ -32,6 +33,10 @@ interface Mentee {
   total_skills_count: number;
   is_placement_ready: boolean;
   github_username?: string;
+  resume_storage_path?: string | null;
+  resume_file_name?: string | null;
+  resume_uploaded_at?: string | null;
+  has_resume?: boolean;
 }
 
 interface Props {
@@ -214,13 +219,14 @@ export default function MentorMenteeDirectory({
                 </div>
               </th>
               <th className="py-3 px-4">Readiness Status</th>
+              <th className="py-3 px-4">Resume</th>
               <th className="py-3 px-4 text-right">Links</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-medium">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-slate-400">
+                <td colSpan={9} className="py-8 text-center text-slate-400">
                   No students match the criteria.
                 </td>
               </tr>
@@ -299,6 +305,25 @@ export default function MentorMenteeDirectory({
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 dark:bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-500/30">
                         <AlertTriangle className="w-3 h-3" />
                         <span>Requires Remediation</span>
+                      </span>
+                    )}
+                  </td>
+
+                  <td className="py-3 px-4">
+                    {m.resume_storage_path || m.has_resume ? (
+                      <a
+                        href={`/api/recruiter/resume/file?path=${encodeURIComponent(m.resume_storage_path || '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 dark:hover:bg-indigo-900 transition-colors"
+                        title={m.resume_file_name || 'View Permanent Resume'}
+                      >
+                        <FileText className="w-3.5 h-3.5 text-indigo-500" />
+                        <span>View Resume</span>
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/60">
+                        Resume not uploaded
                       </span>
                     )}
                   </td>

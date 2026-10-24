@@ -1,3 +1,4 @@
+import Link from 'next/link';
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -101,6 +102,8 @@ export default function ResumeBuilderPage() {
       location: 'Nitte, Karnataka, India',
       linkedin: 'linkedin.com/in/pranav-r',
       github: 'github.com/pranavr06',
+      codingProfile: 'leetcode.com/pranav_r',
+      leetcode: 'leetcode.com/pranav_r',
     },
     summary:
       'Proactive Computer Science & Engineering undergraduate with deep competence in Full-Stack Development, Distributed Systems, and Machine Learning. Passionate about architecting resilient cloud systems and solving complex algorithmic challenges.',
@@ -199,6 +202,32 @@ export default function ResumeBuilderPage() {
 
   useEffect(() => {
     fetchSavedResumes();
+
+    // Auto-fetch shared profile links from Links Analyzer
+    async function fetchSharedLinks() {
+      try {
+        const res = await fetch('/api/student/links');
+        if (res.ok) {
+          const data = await res.json();
+          if (data.links) {
+            setResume((prev) => ({
+              ...prev,
+              contact: {
+                ...prev.contact,
+                linkedin: data.links.linkedin_url || prev.contact.linkedin,
+                github: data.links.github_url || prev.contact.github,
+                codingProfile: data.links.leetcode_url || prev.contact.codingProfile,
+                leetcode: data.links.leetcode_url || prev.contact.leetcode,
+              },
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to pre-fill shared profile links:', err);
+      }
+    }
+
+    fetchSharedLinks();
   }, [user]);
 
   // 2. Import Profile from YojanaSethu database
@@ -215,9 +244,30 @@ export default function ResumeBuilderPage() {
       }
 
       if (data.resumeData) {
-        setResume(data.resumeData);
-        if (data.resumeData.targetRole) {
-          setTargetRole(data.resumeData.targetRole);
+        let imported = data.resumeData;
+        try {
+          const linksRes = await fetch('/api/student/links');
+          if (linksRes.ok) {
+            const linksData = await linksRes.json();
+            if (linksData.links) {
+              imported = {
+                ...imported,
+                contact: {
+                  ...imported.contact,
+                  linkedin: linksData.links.linkedin_url || imported.contact.linkedin,
+                  github: linksData.links.github_url || imported.contact.github,
+                  codingProfile: linksData.links.leetcode_url || imported.contact.codingProfile,
+                  leetcode: linksData.links.leetcode_url || imported.contact.leetcode,
+                },
+              };
+            }
+          }
+        } catch {
+          // Ignore
+        }
+        setResume(imported);
+        if (imported.targetRole) {
+          setTargetRole(imported.targetRole);
         }
         setSaveSuccess(true);
         setTimeout(() => setSaveSuccess(false), 3000);
@@ -533,6 +583,16 @@ export default function ResumeBuilderPage() {
 
         {/* Action Controls Toolbar */}
         <div className="flex items-center gap-2.5 flex-wrap">
+          {/* My Permanent Resume Navigation Button */}
+          <Link
+            href="/student"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 transition-colors"
+            title="Go to permanent resume storage in Student Dashboard"
+          >
+            <FileText className="w-3.5 h-3.5 text-indigo-500" />
+            <span>My Permanent Resume</span>
+          </Link>
+
           {/* Saved Resumes Selector */}
           {savedResumes.length > 0 && (
             <select
@@ -582,6 +642,23 @@ export default function ResumeBuilderPage() {
             <span>Download PDF</span>
           </button>
         </div>
+      </div>
+
+      {/* Permanent Resume vs AI Drafts Clarification Banner */}
+      <div className="p-3.5 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 print:hidden">
+        <div className="flex items-center gap-2.5">
+          <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+          <span className="text-slate-700 dark:text-slate-300">
+            <strong>Workspace Notice:</strong> AI-generated resumes and edits here remain private drafts until you download or export them. They do not overwrite your official permanent resume stored on your dashboard.
+          </span>
+        </div>
+        <Link
+          href="/student"
+          className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1 shrink-0 text-[11px]"
+        >
+          <span>Manage Official Resume</span>
+          <ArrowRight className="w-3 h-3" />
+        </Link>
       </div>
 
       {/* Error Banner */}
@@ -716,6 +793,50 @@ export default function ResumeBuilderPage() {
                   }}
                   className="w-full bg-transparent text-xs font-semibold text-slate-900 dark:text-white outline-none"
                 />
+              </div>
+            </div>
+          </div>
+
+          {/* Shared Developer Profile Links (Synced with Links Analyzer) */}
+          <div className="glass-panel p-5 rounded-3xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-blue-500" />
+                  <span>Developer & Social Profiles (Synced with Links Analyzer)</span>
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Shared across YojanaSethu: These 3 verified URLs substantiate your projects, code quality, and algorithmic problem solving.
+                </p>
+              </div>
+
+              <Link
+                href="/student/links-analyzer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 transition-colors shrink-0 self-start sm:self-auto"
+              >
+                <span>Audit in Links Analyzer</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+              <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">GitHub URL</span>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                  {resume.contact.github || 'Not provided'}
+                </p>
+              </div>
+              <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">LinkedIn URL</span>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                  {resume.contact.linkedin || 'Not provided'}
+                </p>
+              </div>
+              <div className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">LeetCode / Coding Profile</span>
+                <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                  {resume.contact.codingProfile || resume.contact.leetcode || 'Not provided'}
+                </p>
               </div>
             </div>
           </div>
@@ -1255,6 +1376,26 @@ export default function ResumeBuilderPage() {
                         setResume({
                           ...resume,
                           contact: { ...resume.contact, linkedin: e.target.value },
+                        })
+                      }
+                      className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[11px] font-medium text-slate-500">LeetCode / Coding Profile URL</label>
+                    <input
+                      type="text"
+                      placeholder="leetcode.com/username or coding platform"
+                      value={resume.contact.codingProfile || resume.contact.leetcode || ''}
+                      onChange={(e) =>
+                        setResume({
+                          ...resume,
+                          contact: {
+                            ...resume.contact,
+                            codingProfile: e.target.value,
+                            leetcode: e.target.value,
+                          },
                         })
                       }
                       className="mt-1 w-full rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 p-2.5 text-xs text-slate-900 dark:text-white outline-none focus:border-indigo-500"

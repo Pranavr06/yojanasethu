@@ -67,6 +67,8 @@ export default function ResumePreviewDocument({ resume, template }: Props) {
             {contact.linkedin && <span>{contact.linkedin}</span>}
             {contact.github && <span>•</span>}
             {contact.github && <span>{contact.github}</span>}
+            {(contact.codingProfile || contact.leetcode) && <span>•</span>}
+            {(contact.codingProfile || contact.leetcode) && <span>{contact.codingProfile || contact.leetcode}</span>}
           </div>
         </div>
 
@@ -252,6 +254,7 @@ export default function ResumePreviewDocument({ resume, template }: Props) {
               {contact.location}
               {contact.github && ` • ${contact.github}`}
               {contact.linkedin && ` • ${contact.linkedin}`}
+              {(contact.codingProfile || contact.leetcode) && ` • ${contact.codingProfile || contact.leetcode}`}
             </div>
           </div>
         </div>
@@ -432,7 +435,7 @@ export default function ResumePreviewDocument({ resume, template }: Props) {
           </div>
           <div className="text-[11px] font-mono text-slate-600 sm:text-right space-y-0.5">
             <div>{contact.email} | {contact.phone}</div>
-            <div>{contact.location} | {contact.github} | {contact.linkedin}</div>
+            <div>{contact.location} | {contact.github} | {contact.linkedin}{(contact.codingProfile || contact.leetcode) ? ` | ${contact.codingProfile || contact.leetcode}` : ''}</div>
           </div>
         </div>
 
@@ -606,6 +609,8 @@ export default function ResumePreviewDocument({ resume, template }: Props) {
           {contact.github && <span className="text-indigo-600 font-medium">{contact.github}</span>}
           {contact.portfolio && <span>•</span>}
           {contact.portfolio && <span className="text-indigo-600 font-medium">{contact.portfolio}</span>}
+          {(contact.codingProfile || contact.leetcode) && <span>•</span>}
+          {(contact.codingProfile || contact.leetcode) && <span className="text-amber-600 font-medium">{contact.codingProfile || contact.leetcode}</span>}
         </div>
       </div>
 

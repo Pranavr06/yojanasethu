@@ -49,6 +49,7 @@ STRICT CONSTRAINTS (MANDATORY):
 3. ELEVATE project and experience bullet points using high-impact action verbs (e.g. "Architected", "Engineered", "Streamlined", "Accelerated", "Formulated") and measurable impact formulas (Google X-Y-Z formula: "Accomplished [X], measured by [Y], by doing [Z]").
 4. WRITE a concise, punchy 3-4 sentence professional summary tailored to "${targetRole}", emphasizing technical proficiency, system design mindset, and real achievements.
 5. ORGANIZE technical skills cleanly into: Languages, Frameworks, Tools & Cloud, and Core Competencies.
+6. PRESERVE AND INCLUDE developer profile links: GitHub URL, LinkedIn URL, and LeetCode / Coding Profile URL in the contact object. Use them to substantiate real technical projects and algorithmic proficiency.
 6. Return ONLY a single valid JSON object adhering strictly to the ResumeData schema. NO markdown formatting, NO conversational text.
 
 INPUT RESUME DATA:
@@ -63,6 +64,8 @@ OUTPUT SCHEMA (Must match ResumeData exactly):
     "location": string,
     "linkedin": string,
     "github": string,
+    "codingProfile": string,
+    "leetcode": string,
     "portfolio": string
   },
   "summary": string,

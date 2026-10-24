@@ -585,9 +585,20 @@ export default function CertificatesPage() {
                         </span>
                       </div>
                     ) : (
-                      <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
-                        Not taken yet
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold">
+                          Not taken yet
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openAssessmentForCert(cert)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold shadow-sm transition-all hover:scale-105"
+                          title="Take proctored assessment for this certificate"
+                        >
+                          <BrainCircuit className="w-3 h-3" />
+                          <span>Take Exam</span>
+                        </button>
+                      </div>
                     )}
                   </div>
 
@@ -629,13 +640,13 @@ export default function CertificatesPage() {
 
                   <div className="flex items-center gap-2">
                     {/* Take / Retake Assessment Button */}
-                    {(cert.status === 'pending_assessment' || cert.status === 'retake_granted' || cert.canRetake) && (
+                    {(!hasScore || cert.status === 'pending_assessment' || cert.status === 'retake_granted' || cert.canRetake) && (
                       <button
                         onClick={() => openAssessmentForCert(cert)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105"
                       >
                         <BrainCircuit className="w-3.5 h-3.5" />
-                        <span>{cert.status === 'retake_granted' || cert.canRetake ? 'Retake Exam (Attempt 2)' : 'Take Exam'}</span>
+                        <span>{cert.status === 'retake_granted' || cert.canRetake ? 'Retake Exam (Attempt 2)' : hasScore ? 'Retake Exam' : 'Take Exam'}</span>
                       </button>
                     )}
 

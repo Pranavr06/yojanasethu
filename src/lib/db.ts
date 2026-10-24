@@ -1,3 +1,4 @@
+import { getSignedDocumentUrl } from './storage';
 import {
   Profile,
   AcademicRecord,
@@ -33,6 +34,9 @@ import {
   ResumeTemplateType,
   ResumeAnalysisResult,
   ResumeCertification,
+  StudentUploadedResume,
+  StudentProfileLinks,
+  LinksAnalysisReport,
 } from '@/types';
 import {
   gradeAssessmentSubmission,
@@ -1200,7 +1204,7 @@ export async function dbGetMentorMentees(options?: {
   try {
     let profileQuery = supabase
       .from('profiles')
-      .select('id, full_name, email, usn, semester, graduation_year, github_username, departments(id, code, name)')
+      .select('id, full_name, email, usn, semester, graduation_year, github_username, resume_storage_path, resume_file_name, resume_uploaded_at, departments(id, code, name)')
       .eq('role', 'student')
       .order('usn', { ascending: true });
 
@@ -1253,6 +1257,10 @@ export async function dbGetMentorMentees(options?: {
         total_skills_count: sc.total,
         is_placement_ready: isPlacementReady,
         github_username: p.github_username,
+        resume_storage_path: (p as any).resume_storage_path || null,
+        resume_file_name: (p as any).resume_file_name || null,
+        resume_uploaded_at: (p as any).resume_uploaded_at || null,
+        has_resume: Boolean((p as any).resume_storage_path),
       };
     });
 
@@ -3292,8 +3300,10 @@ export function dbBuildDefaultResumeFromProfile(student: FullStudentProfile): Re
       email: profile.email || 'student@nmamit.in',
       phone: profile.phone || '+91 98765 43210',
       location: 'Nitte, Karnataka, India',
-      linkedin: 'linkedin.com/in/' + (profile.full_name?.toLowerCase().replace(/\s+/g, '-') || 'student'),
-      github: 'github.com/' + (profile.usn?.toLowerCase() || 'student'),
+      linkedin: profile.linkedin_url || ('linkedin.com/in/' + (profile.full_name?.toLowerCase().replace(/\s+/g, '-') || 'student')),
+      github: profile.github_url || (profile.github_username ? ('github.com/' + profile.github_username) : ('github.com/' + (profile.usn?.toLowerCase() || 'student'))),
+      codingProfile: (profile as any).leetcode_url || (profile as any).coding_profile_url || undefined,
+      leetcode: (profile as any).leetcode_url || undefined,
     },
     summary: `Dedicated ${departmentName} undergraduate with a verified CGPA of ${ar?.cgpa ? ar.cgpa.toFixed(2) : '8.5'}/10.0 and hands-on proficiency in modern software engineering. Strong background in scalable system architecture, algorithmic problem solving, and building reliable distributed applications.`,
     targetRole: student.target_role || 'Software Development Engineer',
@@ -3355,4 +3365,430 @@ export function dbBuildDefaultResumeFromProfile(student: FullStudentProfile): Re
       'Finalist in National Level Hackathon (Nexathon 2026) for institutional ERP innovation',
     ],
   };
+}
+// ============================================================================
+// PERMANENT STUDENT UPLOADED RESUME STORAGE & MULTI-DASHBOARD ACCESS
+// ============================================================================
+
+const memoryUploadedResumes = new Map<string, StudentUploadedResume>();
+
+/**
+ * Fetch permanent uploaded resume for a student.
+ * Checks student_uploaded_resumes table, profiles table, and in-memory cache.
+ */
+export async function dbGetStudentUploadedResume(studentIdOrIdentifier: string): Promise<StudentUploadedResume | null> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  // 1. Try Supabase student_uploaded_resumes table
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_uploaded_resumes')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data) {
+        const { signedUrl } = await getSignedDocumentUrl(data.storage_path, 3600);
+        const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(data.storage_path)}`;
+        return {
+          ...data,
+          view_url: signedUrl || streamingUrl,
+          download_url: streamingUrl,
+        } as StudentUploadedResume;
+      }
+    } catch (err) {
+      console.warn('dbGetStudentUploadedResume table query exception:', err);
+    }
+
+    // 2. Fallback to profiles table resume columns
+    try {
+      const { data: profile, error: pErr } = await supabase
+        .from('profiles')
+        .select('id, resume_storage_path, resume_file_name, resume_file_size, resume_uploaded_at, updated_at')
+        .eq('id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!pErr && profile && profile.resume_storage_path) {
+        const { signedUrl } = await getSignedDocumentUrl(profile.resume_storage_path, 3600);
+        const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(profile.resume_storage_path)}`;
+        return {
+          id: `resume-${profile.id}`,
+          student_id: profile.id,
+          file_name: profile.resume_file_name || 'Resume.pdf',
+          storage_path: profile.resume_storage_path,
+          file_size: profile.resume_file_size || null,
+          content_type: 'application/pdf',
+          uploaded_at: profile.resume_uploaded_at || profile.updated_at || new Date().toISOString(),
+          updated_at: profile.resume_uploaded_at || profile.updated_at || new Date().toISOString(),
+          view_url: signedUrl || streamingUrl,
+          download_url: streamingUrl,
+        };
+      }
+    } catch (profileErr) {
+      console.warn('dbGetStudentUploadedResume profile query exception:', profileErr);
+    }
+  }
+
+  // 3. Check in-memory store
+  const cached = memoryUploadedResumes.get(resolvedStudentId);
+  if (cached) {
+    const { signedUrl } = await getSignedDocumentUrl(cached.storage_path, 3600);
+    const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(cached.storage_path)}`;
+    return {
+      ...cached,
+      view_url: signedUrl || streamingUrl,
+      download_url: streamingUrl,
+    };
+  }
+
+  // 4. Check ALL_COHORT_PROFILES in-memory cohort
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile && cohortProfile.resume_storage_path) {
+    const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(cohortProfile.resume_storage_path)}`;
+    return {
+      id: `resume-${cohortProfile.id}`,
+      student_id: cohortProfile.id,
+      file_name: cohortProfile.resume_file_name || 'Resume.pdf',
+      storage_path: cohortProfile.resume_storage_path,
+      file_size: cohortProfile.resume_file_size || null,
+      content_type: 'application/pdf',
+      uploaded_at: cohortProfile.resume_uploaded_at || new Date().toISOString(),
+      updated_at: cohortProfile.resume_uploaded_at || new Date().toISOString(),
+      view_url: streamingUrl,
+      download_url: streamingUrl,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Permanently save or update an uploaded student resume.
+ * Persists in student_uploaded_resumes table, profiles table, and local memory cache.
+ */
+export async function dbSaveStudentUploadedResume(
+  studentIdOrIdentifier: string,
+  params: {
+    storage_path: string;
+    file_name: string;
+    file_size?: string;
+    content_type?: string;
+  }
+): Promise<StudentUploadedResume> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const resumeRecord: StudentUploadedResume = {
+    id: `resume-${resolvedStudentId}`,
+    student_id: resolvedStudentId,
+    file_name: params.file_name,
+    storage_path: params.storage_path,
+    file_size: params.file_size || null,
+    content_type: params.content_type || 'application/pdf',
+    uploaded_at: now,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // Upsert into student_uploaded_resumes
+      await supabase
+        .from('student_uploaded_resumes')
+        .upsert(
+          {
+            student_id: resolvedStudentId,
+            file_name: params.file_name,
+            storage_path: params.storage_path,
+            file_size: params.file_size || null,
+            content_type: params.content_type || 'application/pdf',
+            updated_at: now,
+          },
+          { onConflict: 'student_id' }
+        );
+
+      // Update profiles table
+      await supabase
+        .from('profiles')
+        .update({
+          resume_storage_path: params.storage_path,
+          resume_file_name: params.file_name,
+          resume_file_size: params.file_size || null,
+          resume_uploaded_at: now,
+        })
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbSaveStudentUploadedResume database exception:', err);
+    }
+  }
+
+  // Update in-memory cache and cohort profile
+  memoryUploadedResumes.set(resolvedStudentId, resumeRecord);
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile) {
+    cohortProfile.resume_storage_path = params.storage_path;
+    cohortProfile.resume_file_name = params.file_name;
+    cohortProfile.resume_file_size = params.file_size || null;
+    cohortProfile.resume_uploaded_at = now;
+  }
+
+  const { signedUrl } = await getSignedDocumentUrl(params.storage_path, 3600);
+  const streamingUrl = `/api/recruiter/resume/file?path=${encodeURIComponent(params.storage_path)}`;
+  return {
+    ...resumeRecord,
+    view_url: signedUrl || streamingUrl,
+    download_url: streamingUrl,
+  };
+}
+
+/**
+ * Permanently delete an uploaded student resume.
+ * Removes from student_uploaded_resumes table, clears profiles table columns, and memory cache.
+ */
+export async function dbDeleteStudentUploadedResume(studentIdOrIdentifier: string): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from('student_uploaded_resumes')
+        .delete()
+        .eq('student_id', resolvedStudentId);
+
+      await supabase
+        .from('profiles')
+        .update({
+          resume_storage_path: null,
+          resume_file_name: null,
+          resume_file_size: null,
+          resume_uploaded_at: null,
+        })
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbDeleteStudentUploadedResume database exception:', err);
+    }
+  }
+
+  memoryUploadedResumes.delete(resolvedStudentId);
+  const cohortProfile = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohortProfile) {
+    cohortProfile.resume_storage_path = null;
+    cohortProfile.resume_file_name = null;
+    cohortProfile.resume_file_size = null;
+    cohortProfile.resume_uploaded_at = null;
+  }
+
+  return true;
+}
+// ============================================================================
+// SHARED STUDENT PROFILE LINKS & LINKS ANALYZER PERSISTENCE
+// ============================================================================
+
+const memoryStudentLinks = new Map<string, StudentProfileLinks>();
+const memoryStudentLinksAnalysis = new Map<string, LinksAnalysisReport>();
+
+/**
+ * Fetch a student's shared profile links (LinkedIn, GitHub, LeetCode / Coding profile).
+ * Serves as the single shared source of truth for both Links Analyzer and AI Resume Builder.
+ */
+export async function dbGetStudentProfileLinks(studentIdOrIdentifier: string): Promise<StudentProfileLinks> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  // 1. Try Supabase profiles table
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, linkedin_url, github_username, github_url, leetcode_url, coding_profile_url, target_career_role, updated_at')
+        .eq('id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          student_id: data.id,
+          linkedin_url: data.linkedin_url || undefined,
+          github_url: data.github_url || (data.github_username ? `https://github.com/${data.github_username}` : undefined),
+          leetcode_url: data.leetcode_url || data.coding_profile_url || undefined,
+          target_role: data.target_career_role || 'Software Development Engineer',
+          updated_at: data.updated_at,
+        };
+      }
+    } catch (err) {
+      console.warn('dbGetStudentProfileLinks database lookup error:', err);
+    }
+  }
+
+  // 2. Check in-memory store
+  const cached = memoryStudentLinks.get(resolvedStudentId);
+  if (cached) return cached;
+
+  // 3. Check seeded cohort profile
+  const cohort = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohort) {
+    const rawGithub = (cohort as any).github_url || (cohort.github_username ? `https://github.com/${cohort.github_username}` : undefined);
+    return {
+      student_id: cohort.id,
+      linkedin_url: cohort.linkedin_url || `https://linkedin.com/in/${cohort.full_name.toLowerCase().replace(/\s+/g, '-')}`,
+      github_url: rawGithub || `https://github.com/${(cohort.usn || 'student').toLowerCase()}`,
+      leetcode_url: (cohort as any).leetcode_url || (cohort as any).coding_profile_url || `https://leetcode.com/${(cohort.usn || 'student').toLowerCase()}`,
+      target_role: cohort.target_career_role || 'Software Development Engineer',
+    };
+  }
+
+  // Default fallback for demo student
+  return {
+    student_id: resolvedStudentId,
+    linkedin_url: 'https://linkedin.com/in/pranav-r',
+    github_url: 'https://github.com/pranavr06',
+    leetcode_url: 'https://leetcode.com/pranav_r',
+    target_role: 'Software Development Engineer',
+  };
+}
+
+/**
+ * Save or update a student's shared profile links.
+ * Updates public.profiles table so both Links Analyzer and Resume Builder stay strictly synced.
+ */
+export async function dbSaveStudentProfileLinks(
+  studentIdOrIdentifier: string,
+  links: StudentProfileLinks
+): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const record: StudentProfileLinks = {
+    ...links,
+    student_id: resolvedStudentId,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // Extract github username if full URL is passed
+      let githubUsername: string | undefined = undefined;
+      if (links.github_url) {
+        const match = links.github_url.match(/github\.com\/([^/?#]+)/i);
+        if (match && match[1]) githubUsername = match[1];
+      }
+
+      const updatePayload: any = {
+        updated_at: now,
+      };
+      if (links.linkedin_url !== undefined) updatePayload.linkedin_url = links.linkedin_url;
+      if (links.github_url !== undefined) updatePayload.github_url = links.github_url;
+      if (githubUsername) updatePayload.github_username = githubUsername;
+      if (links.leetcode_url !== undefined) {
+        updatePayload.leetcode_url = links.leetcode_url;
+        updatePayload.coding_profile_url = links.leetcode_url;
+      }
+      if (links.target_role !== undefined) updatePayload.target_career_role = links.target_role;
+
+      await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbSaveStudentProfileLinks database update exception:', err);
+    }
+  }
+
+  memoryStudentLinks.set(resolvedStudentId, record);
+
+  const cohort = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohort) {
+    if (links.linkedin_url !== undefined) cohort.linkedin_url = links.linkedin_url;
+    if (links.github_url !== undefined) (cohort as any).github_url = links.github_url;
+    if (links.leetcode_url !== undefined) {
+      (cohort as any).leetcode_url = links.leetcode_url;
+      (cohort as any).coding_profile_url = links.leetcode_url;
+    }
+    if (links.target_role !== undefined) cohort.target_career_role = links.target_role;
+  }
+
+  return true;
+}
+
+/**
+ * Fetch saved Links Analysis report for a student.
+ */
+export async function dbGetStudentLinksAnalysis(studentIdOrIdentifier: string): Promise<LinksAnalysisReport | null> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_links_analysis')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data && data.analysis_report) {
+        return {
+          ...data.analysis_report,
+          id: data.id,
+          student_id: data.student_id,
+          target_role: data.target_role,
+          target_job_description: data.target_job_description,
+          analyzed_at: data.updated_at || data.created_at,
+        } as LinksAnalysisReport;
+      }
+    } catch (err) {
+      console.warn('dbGetStudentLinksAnalysis database error:', err);
+    }
+  }
+
+  return memoryStudentLinksAnalysis.get(resolvedStudentId) || null;
+}
+
+/**
+ * Save or update a student's Links Analysis report.
+ * Stored separately from resumes so analysis recommendations never mutate resume documents automatically.
+ */
+export async function dbSaveStudentLinksAnalysis(
+  studentIdOrIdentifier: string,
+  report: LinksAnalysisReport
+): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const fullReport: LinksAnalysisReport = {
+    ...report,
+    student_id: resolvedStudentId,
+    analyzed_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from('student_links_analysis')
+        .upsert(
+          {
+            student_id: resolvedStudentId,
+            target_role: report.target_role,
+            target_job_description: report.target_job_description || null,
+            linkedin_url: report.linkedin_analysis?.url || null,
+            github_url: report.github_analysis?.url || null,
+            leetcode_url: report.leetcode_analysis?.url || null,
+            analysis_report: fullReport,
+            updated_at: now,
+          },
+          { onConflict: 'student_id' }
+        );
+    } catch (err) {
+      console.warn('dbSaveStudentLinksAnalysis database exception:', err);
+    }
+  }
+
+  memoryStudentLinksAnalysis.set(resolvedStudentId, fullReport);
+  return true;
 }
