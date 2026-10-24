@@ -66,7 +66,15 @@ export async function validateStudentSession(
     }
   }
 
-  // 3. If no session, reject immediately
+  // 3. Test / Automation header support (strictly disabled in production)
+  if (!authUser && process.env.NODE_ENV !== 'production' && request?.headers) {
+    const testHeader = request.headers.get('x-test-student-id');
+    if (testHeader) {
+      authUser = { id: testHeader.trim() };
+    }
+  }
+
+  // 4. If no session, reject immediately
   if (!authUser) {
     return {
       authorized: false,

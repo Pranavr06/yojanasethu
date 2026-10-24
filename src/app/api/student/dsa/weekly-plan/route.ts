@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getWeeklyPlan, updateTaskCompletion } from '@/lib/dsa/dsaStore';
+import { validateStudentSession } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-    const studentId = searchParams.get('student_id') || 'student-mock-1';
+    const clientSuppliedStudentId = searchParams.get('student_id') || undefined;
+
+    // Verify student session server-side
+    const authResult = await validateStudentSession(req, clientSuppliedStudentId);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
 
     const tasks = await getWeeklyPlan(studentId);
     return NextResponse.json({ tasks: tasks || [] });
@@ -21,7 +32,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { student_id, task_id, completed } = body;
 
-    const studentId = student_id || 'student-mock-1';
+    // Verify student session server-side
+    const authResult = await validateStudentSession(req, student_id);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
 
     if (!task_id) {
       return NextResponse.json({ error: 'Task ID is required' }, { status: 400 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { saveCodingStats } from '@/lib/dsa/dsaStore';
 import { CodingPlatform, PlatformStatistics, STANDARD_DSA_TOPICS } from '@/types/dsa';
+import { validateStudentSession } from '@/lib/serverAuth';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,7 +23,15 @@ export async function POST(req: NextRequest) {
       topic_statistics,
     } = body;
 
-    const studentId = student_id || 'student-mock-1';
+    // Verify authenticated student session server-side
+    const authResult = await validateStudentSession(req, student_id);
+    if (!authResult.authorized || !authResult.studentId) {
+      return NextResponse.json(
+        { error: authResult.error || 'Unauthorized student session. Please log in.' },
+        { status: authResult.status || 401 }
+      );
+    }
+    const studentId = authResult.studentId;
 
     if (!platform) {
       return NextResponse.json({ error: 'Platform identifier is required' }, { status: 400 });
@@ -76,12 +85,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       stats,
-      message: 'Verified coding statistics saved successfully',
+      message: `Manual statistics for ${platform} saved successfully.`,
     });
   } catch (error: any) {
-    console.error('Error saving manual stats:', error);
+    console.error('Error saving manual DSA stats:', error);
     return NextResponse.json(
-      { error: error.message || 'Failed to save manual coding statistics' },
+      { error: error.message || 'Failed to save manual statistics' },
       { status: 500 }
     );
   }

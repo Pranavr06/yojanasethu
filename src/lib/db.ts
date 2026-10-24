@@ -2912,6 +2912,7 @@ export async function dbGetStudentDsaProgress(studentIdOrIdentifier: string): Pr
         .from('student_dsa_progress')
         .select('*')
         .eq('student_id', resolvedStudentId)
+        .not('topic_id', 'like', 'coding_%')
         .order('updated_at', { ascending: false });
 
       if (error) {
