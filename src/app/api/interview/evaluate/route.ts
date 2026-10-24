@@ -134,6 +134,13 @@ export async function POST(request: NextRequest) {
     // -------------------------------------------------------------------------
     if (action === "generate_question") {
       const targetRole = String(role || "Software Engineer").slice(0, 100);
+      const lastAnswerText =
+        typeof body.lastAnswer === "string"
+          ? body.lastAnswer
+          : typeof answer === "string"
+          ? answer
+          : undefined;
+
       const generated = await executeLangGraphQuestionGeneration({
         studentId: resolvedStudentId,
         role: targetRole,
@@ -142,6 +149,7 @@ export async function POST(request: NextRequest) {
         maxQuestions: typeof maxQuestions === "number" ? maxQuestions : 4,
         difficulty: difficulty || "intermediate",
         questionHistory: Array.isArray(questionHistory) ? questionHistory : [],
+        lastAnswer: lastAnswerText,
       });
 
       return NextResponse.json({

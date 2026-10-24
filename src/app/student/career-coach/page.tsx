@@ -329,49 +329,53 @@ export default function UnifiedAcademicCareerCoachPage() {
       </div>
 
       {/* Main Feature Tabs */}
-      <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 overflow-x-auto pb-px scrollbar-none text-xs font-bold">
+      <div className="flex items-center gap-2 overflow-x-auto p-1.5 rounded-2xl bg-slate-900 dark:bg-slate-950 border border-slate-800 shadow-sm scrollbar-none text-xs font-bold">
         <button
+          type="button"
           onClick={() => setActiveTab('academic')}
-          className={`pb-3 px-3 transition-all border-b-2 ${
+          className={`shrink-0 py-2.5 px-3.5 sm:px-4 rounded-xl transition-all duration-200 font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
             activeTab === 'academic'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-[#123F91] text-white border-b-[3px] border-[#3B82F6] border-t border-x border-blue-400/20 shadow-md shadow-blue-900/30'
+              : 'text-white bg-transparent hover:bg-slate-800/80 hover:text-white border-b-[3px] border-transparent'
           }`}
         >
           1. Academic Improvement Engine ({academicProfile?.weak_subjects.length || 0} Priorities)
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('company')}
-          className={`pb-3 px-3 transition-all border-b-2 ${
+          className={`shrink-0 py-2.5 px-3.5 sm:px-4 rounded-xl transition-all duration-200 font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
             activeTab === 'company'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-[#123F91] text-white border-b-[3px] border-[#3B82F6] border-t border-x border-blue-400/20 shadow-md shadow-blue-900/30'
+              : 'text-white bg-transparent hover:bg-slate-800/80 hover:text-white border-b-[3px] border-transparent'
           }`}
         >
           2. Company-Targeted Preparation ({selectedCompany})
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('roadmap')}
-          className={`pb-3 px-3 transition-all border-b-2 ${
+          className={`shrink-0 py-2.5 px-3.5 sm:px-4 rounded-xl transition-all duration-200 font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
             activeTab === 'roadmap'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-[#123F91] text-white border-b-[3px] border-[#3B82F6] border-t border-x border-blue-400/20 shadow-md shadow-blue-900/30'
+              : 'text-white bg-transparent hover:bg-slate-800/80 hover:text-white border-b-[3px] border-transparent'
           }`}
         >
           3. Unified 30-Day Action Plan ({roadmapTasks.filter((t) => t.is_completed).length}/{roadmapTasks.length})
         </button>
 
         <button
+          type="button"
           onClick={() => setActiveTab('chat')}
-          className={`pb-3 px-3 transition-all border-b-2 flex items-center gap-1.5 ${
+          className={`shrink-0 py-2.5 px-3.5 sm:px-4 rounded-xl transition-all duration-200 font-bold flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 ${
             activeTab === 'chat'
-              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-              : 'border-transparent text-slate-500 hover:text-slate-900 dark:hover:text-white'
+              ? 'bg-[#123F91] text-white border-b-[3px] border-[#3B82F6] border-t border-x border-blue-400/20 shadow-md shadow-blue-900/30'
+              : 'text-white bg-transparent hover:bg-slate-800/80 hover:text-white border-b-[3px] border-transparent'
           }`}
         >
-          <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+          <Sparkles className={`w-3.5 h-3.5 transition-colors ${activeTab === 'chat' ? 'text-white' : 'text-slate-200'}`} />
           <span>4. AI Coach Interactive Chat</span>
         </button>
       </div>

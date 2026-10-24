@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { usePathname } from 'next/navigation';
 import Sidebar from '@/components/Sidebar';
 import NotificationBell from '@/components/NotificationBell';
+import GlobalBackButton from '@/components/GlobalBackButton';
 import { useAuth } from '@/lib/authContext';
 import { useTheme } from '@/lib/themeContext';
 import {
@@ -170,6 +171,7 @@ export function AppShell({ children, title, subtitle }: AppShellProps) {
         </header>
 
         <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6 lg:px-8">
+          <GlobalBackButton />
           {children}
         </main>
 

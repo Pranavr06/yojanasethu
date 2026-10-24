@@ -3,6 +3,7 @@ import './globals.css';
 import AppShell from '@/components/AppShell';
 import { ThemeProvider } from '@/lib/themeContext';
 import { AuthProvider } from '@/lib/authContext';
+import { NavigationGuardProvider } from '@/lib/navigationGuardContext';
 
 export const metadata: Metadata = {
   title: 'YojanaSethu — Proof-Based Student Career & Placement Platform',
@@ -20,7 +21,9 @@ export default function RootLayout({
       <body className="min-h-screen">
         <ThemeProvider>
           <AuthProvider>
-            <AppShell>{children}</AppShell>
+            <NavigationGuardProvider>
+              <AppShell>{children}</AppShell>
+            </NavigationGuardProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

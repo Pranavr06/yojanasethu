@@ -1,3 +1,4 @@
+import Link from 'next/link';
 'use client';
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
@@ -48,15 +49,19 @@ import {
   AcousticTelemetry,
 } from '@/app/api/interview/evaluate/route';
 import { useAuth } from '@/lib/authContext';
+import { useNavigationGuard } from '@/lib/navigationGuardContext';
 
 export type InterviewTrack = 'fullstack' | 'aiml' | 'data' | 'behavioral';
 
 export type InterviewSessionState =
   | 'idle'
+  | 'request_permission'
+  | 'generating_question'
   | 'asking'
   | 'listening'
   | 'saving_answer'
   | 'moving_to_next'
+  | 'paused'
   | 'finalizing_results'
   | 'completed';
 
@@ -346,6 +351,7 @@ function formatTime(totalSeconds: number): string {
 
 export default function MockInterviewAssistant() {
   const { user } = useAuth();
+  const { setNavigationGuard } = useNavigationGuard();
   const [selectedTrack, setSelectedTrack] = useState<InterviewTrack>('fullstack');
   const [sessionState, setSessionState] = useState<InterviewSessionState>('idle');
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
@@ -394,8 +400,96 @@ export default function MockInterviewAssistant() {
   const isPauseActiveRef = useRef<boolean>(false);
   const currentPauseStartRef = useRef<number>(0);
 
-  const activeQuestions = TRACK_QUESTIONS[selectedTrack].questions;
-  const currentQuestion = activeQuestions[currentQuestionIdx];
+  // Dynamic Questions, Echo Cancellation & Silence Detection Refs
+  const [dynamicQuestions, setDynamicQuestions] = useState<QuestionTemplate[]>([]);
+  const isSpeakingRef = useRef<boolean>(false);
+  const lastSpeechTimestampRef = useRef<number>(Date.now());
+  const [silenceNotice, setSilenceNotice] = useState<string | null>(null);
+
+  const activeQuestions =
+    dynamicQuestions.length > 0
+      ? dynamicQuestions
+      : TRACK_QUESTIONS[selectedTrack].questions;
+  const currentQuestion = activeQuestions[currentQuestionIdx] || activeQuestions[0];
+
+  // Factory: Natural Conversational Introductory Question
+  const createIntroductoryQuestion = (
+    track: InterviewTrack,
+    candidateName?: string
+  ): QuestionTemplate => ({
+    id: `intro-${Date.now()}`,
+    question: `Hello! Welcome to your mock interview for the ${TRACK_QUESTIONS[track].title} position. Let's begin with a brief introduction. Could you tell me your name, your engineering background, and what areas of technology interest you most?`,
+    category: 'behavioral',
+    hint: 'Introduce yourself clearly: mention your name, engineering branch, what technical areas inspire you, and what kind of engineering challenges you enjoy solving.',
+    sampleDemoAnswer: `Hello! My name is ${
+      candidateName && candidateName !== 'Candidate' ? candidateName : 'Alex'
+    }, and I am a final-year engineering student majoring in Computer Science. Over my academic journey, I discovered a strong interest in building reliable full-stack applications and distributed backend architectures. I enjoy solving algorithmic problems and turning them into efficient software systems, and I am excited about contributing to high-impact production engineering teams.`,
+    keyPoints: [
+      'Self-introduction and academic branch',
+      'Core technical passions and motivations',
+      'Articulate verbal communication and pacing',
+      'Professional enthusiasm and role alignment',
+    ],
+  });
+
+  // Dynamic Question Generator: LangGraph + Gemini API with previous answer bridging
+  const fetchNextDynamicQuestion = async (
+    nextIndex: number,
+    lastAnswerText: string,
+    history: QuestionTemplate[]
+  ): Promise<QuestionTemplate> => {
+    try {
+      const res = await fetch('/api/interview/evaluate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'generate_question',
+          studentId: user?.id || user?.usn,
+          role: TRACK_QUESTIONS[selectedTrack].title,
+          track: selectedTrack,
+          questionIndex: nextIndex,
+          maxQuestions: 4,
+          difficulty: 'intermediate',
+          questionHistory: history,
+          lastAnswer: lastAnswerText,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data?.question?.question) {
+          return data.question;
+        }
+      }
+    } catch (err) {
+      console.warn('Dynamic question generation network notice, falling back:', err);
+    }
+
+    if (nextIndex === 1) {
+      return {
+        id: `proj-${Date.now()}`,
+        question: `Thank you for sharing your background! Let's dive into your practical engineering experience. Could you walk me through a technical project you built that you are most proud of? What architectural problem were you solving, what major technical roadblock did you encounter, and how did you resolve it?`,
+        category: 'problem_solving',
+        hint: 'Structure your response using the STAR method: Situation, Task, Action, and Measurable Result.',
+        sampleDemoAnswer: `In my campus placement portal project, I designed the backend to support concurrent test submissions for over 500 simultaneous users. During load testing, synchronous database writes caused connection pool exhaustion and spikes in request latency. I resolved this by introducing an asynchronous Redis queue with worker pools to batch database insertions, reducing median API response times from 1.6 seconds to under 75 milliseconds while guaranteeing zero data loss.`,
+        keyPoints: [
+          'Clear problem statement and project context',
+          'Architectural decisions and tech stack rationale',
+          'Specific technical roadblock or bottleneck overcome',
+          'Measurable result or engineering trade-off demonstrated',
+        ],
+      };
+    }
+
+    const fallbackQuestions = TRACK_QUESTIONS[selectedTrack].questions;
+    const fallbackQ =
+      fallbackQuestions[(nextIndex - 2) % fallbackQuestions.length] ||
+      fallbackQuestions[0];
+    return {
+      ...fallbackQ,
+      id: `dyn-${nextIndex}-${Date.now()}`,
+    };
+  };
 
   // 1. Check for recoverable interrupted session in sessionStorage
   useEffect(() => {
@@ -434,6 +528,13 @@ export default function MockInterviewAssistant() {
         recognition.lang = 'en-US';
 
         recognition.onresult = (event: any) => {
+          // CRITICAL ECHO PREVENTION: Never record or transcribe while the interviewer is speaking
+          if (isSpeakingRef.current) {
+            return;
+          }
+
+          lastSpeechTimestampRef.current = Date.now();
+
           let accumulatedFinal = '';
           let currentInterim = '';
 
@@ -466,19 +567,44 @@ export default function MockInterviewAssistant() {
 
           // Voice Command: "Repeat Question"
           if (
-            /\b(repeat question|read question again|say question again)\b/i.test(
+            /\b(repeat question|read question again|say question again|ask again)\b/i.test(
               cleanLower
             )
           ) {
             setDetectedCommandNotice('Voice Command: "Repeat Question"');
             liveText = liveText.replace(
-              /\b(repeat question|read question again|say question again)\b/gi,
+              /\b(repeat question|read question again|say question again|ask again)\b/gi,
               ''
             ).trim();
             baseTextRef.current = liveText;
             setUserAnswer(liveText);
             setTimeout(() => setDetectedCommandNotice(null), 3000);
-            speakText(currentQuestion.question);
+            speakText(currentQuestion.question, () => {
+              if (liveVoiceMode) startListeningForCurrentQuestion();
+            });
+            return;
+          }
+
+          // Voice Command: "Pause Interview"
+          if (/\b(pause interview|pause session|hold on)\b/i.test(cleanLower)) {
+            setDetectedCommandNotice('Voice Command: "Pause Interview"');
+            liveText = liveText.replace(/\b(pause interview|pause session|hold on)\b/gi, '').trim();
+            baseTextRef.current = liveText;
+            setUserAnswer(liveText);
+            setSessionState('paused');
+            stopMicrophoneAndAcoustics(true);
+            setTimeout(() => setDetectedCommandNotice(null), 3000);
+            return;
+          }
+
+          // Voice Command: "Resume Interview"
+          if (/\b(resume interview|resume session|continue interview)\b/i.test(cleanLower)) {
+            setDetectedCommandNotice('Voice Command: "Resume Interview"');
+            liveText = liveText.replace(/\b(resume interview|resume session|continue interview)\b/gi, '').trim();
+            baseTextRef.current = liveText;
+            setUserAnswer(liveText);
+            startListeningForCurrentQuestion();
+            setTimeout(() => setDetectedCommandNotice(null), 3000);
             return;
           }
 
@@ -500,7 +626,7 @@ export default function MockInterviewAssistant() {
 
           // Voice Command: "Pass" (Advance to next question automatically)
           const passMatch = liveText.match(
-            /(?:^|\s)(?:please\s+)?(pass|pass to next|submit answer|done)[\s.!?]*$/i
+            /(?:^|\s)(?:please\s+)?(pass|pass to next|submit answer|submit|done|finished)[\s.!?]*$/i
           );
           if (passMatch) {
             const cleanedAnswer = liveText
@@ -565,27 +691,40 @@ export default function MockInterviewAssistant() {
     };
   }, [sessionState]);
 
-  // Audio Signal Processing: Web Audio Analyser & MediaRecorder
+  // Audio Signal Processing: Web Audio Analyser & MediaRecorder with Persistent Session Reuse
   const startMicrophoneAndAcoustics = async () => {
     try {
       if (typeof window === 'undefined') return;
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      // REUSE AUTHORIZED MEDIA STREAM ACROSS QUESTIONS (NO RE-PROMPTING)
+      let stream = mediaStreamRef.current;
+      if (
+        !stream ||
+        !stream.active ||
+        stream.getAudioTracks().length === 0 ||
+        !stream.getAudioTracks()[0].enabled
+      ) {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        mediaStreamRef.current = stream;
+      }
 
-      mediaStreamRef.current = stream;
       setMicPermissionDenied(false);
 
-      const AudioContextClass =
-        window.AudioContext || (window as any).webkitAudioContext;
-      const audioCtx = new AudioContextClass();
-      audioContextRef.current = audioCtx;
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        const AudioContextClass =
+          window.AudioContext || (window as any).webkitAudioContext;
+        audioContextRef.current = new AudioContextClass();
+      } else if (audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
 
+      const audioCtx = audioContextRef.current;
       const source = audioCtx.createMediaStreamSource(stream);
       const analyser = audioCtx.createAnalyser();
       analyser.fftSize = 2048;
@@ -594,6 +733,7 @@ export default function MockInterviewAssistant() {
 
       speechStartTimeRef.current = Date.now();
       lastVoiceActivityTimeRef.current = Date.now();
+      lastSpeechTimestampRef.current = Date.now();
       isPauseActiveRef.current = false;
       pausesListRef.current = [];
       pitchSamplesRef.current = [];
@@ -616,7 +756,7 @@ export default function MockInterviewAssistant() {
         recorder.start(250);
         mediaRecorderRef.current = recorder;
       } catch (err) {
-        console.warn('MediaRecorder not available:', err);
+        console.warn('MediaRecorder notice:', err);
       }
 
       const buffer = new Float32Array(analyser.fftSize);
@@ -634,7 +774,12 @@ export default function MockInterviewAssistant() {
         const rmsDb = 20 * Math.log10(Math.max(rms, 1e-4));
         rmsSamplesRef.current.push(rmsDb);
 
-        setLiveVolumeLevel(Math.min(100, Math.max(0, Math.round(rms * 400))));
+        const volume = Math.min(100, Math.max(0, Math.round(rms * 400)));
+        setLiveVolumeLevel(volume);
+
+        if (volume > 20) {
+          lastSpeechTimestampRef.current = Date.now();
+        }
 
         const sampleRate = audioCtx.sampleRate;
         const minPeriod = Math.floor(sampleRate / 350);
@@ -674,6 +819,7 @@ export default function MockInterviewAssistant() {
             isPauseActiveRef.current = false;
           }
           lastVoiceActivityTimeRef.current = Date.now();
+          lastSpeechTimestampRef.current = Date.now();
         } else {
           const silenceDuration =
             (Date.now() - lastVoiceActivityTimeRef.current) / 1000;
@@ -694,7 +840,7 @@ export default function MockInterviewAssistant() {
     }
   };
 
-  const stopMicrophoneAndAcoustics = () => {
+  const stopMicrophoneAndAcoustics = (preserveStream: boolean = false) => {
     if (animFrameIdRef.current) {
       cancelAnimationFrame(animFrameIdRef.current);
       animFrameIdRef.current = null;
@@ -706,12 +852,12 @@ export default function MockInterviewAssistant() {
       } catch (_) {}
     }
 
-    if (mediaStreamRef.current) {
+    if (!preserveStream && mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((track) => track.stop());
       mediaStreamRef.current = null;
     }
 
-    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+    if (!preserveStream && audioContextRef.current && audioContextRef.current.state !== 'closed') {
       try {
         audioContextRef.current.close();
       } catch (_) {}
@@ -789,7 +935,7 @@ export default function MockInterviewAssistant() {
     };
   };
 
-  // Text-To-Speech Output with Reliable Callback Sequencing
+  // Text-To-Speech Output with Strict Echo Cancellation & Reverb Buffer
   const speakText = (text: string, onFinish?: () => void) => {
     if (
       !voiceEnabled ||
@@ -801,6 +947,16 @@ export default function MockInterviewAssistant() {
     }
 
     window.speechSynthesis.cancel();
+    isSpeakingRef.current = true;
+    setIsSpeaking(true);
+
+    // MUTE/ABORT SPEECH RECOGNITION WHILE AI IS SPEAKING TO PREVENT SELF-ECHO
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (_) {}
+      setIsListening(false);
+    }
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.0;
@@ -822,12 +978,19 @@ export default function MockInterviewAssistant() {
     const finishHandler = () => {
       if (!hasFinished) {
         hasFinished = true;
+        isSpeakingRef.current = false;
         setIsSpeaking(false);
-        if (onFinish) onFinish();
+        // 350ms acoustic room reverb decay buffer before candidate listening resumes
+        setTimeout(() => {
+          if (onFinish) onFinish();
+        }, 350);
       }
     };
 
-    utterance.onstart = () => setIsSpeaking(true);
+    utterance.onstart = () => {
+      isSpeakingRef.current = true;
+      setIsSpeaking(true);
+    };
     utterance.onend = finishHandler;
     utterance.onerror = finishHandler;
 
@@ -840,6 +1003,81 @@ export default function MockInterviewAssistant() {
       setIsSpeaking(false);
     }
   };
+
+  // Navigation Guard: Prevent accidental exit during an active voice mock interview
+  useEffect(() => {
+    const isInterviewActive =
+      sessionState === 'asking' ||
+      sessionState === 'listening' ||
+      sessionState === 'saving_answer' ||
+      sessionState === 'moving_to_next' ||
+      sessionState === 'generating_question' ||
+      sessionState === 'paused';
+
+    if (isInterviewActive) {
+      setNavigationGuard({
+        isActive: true,
+        title: 'Leave Interview Session?',
+        message:
+          'Your AI voice mock interview is currently in progress. Leaving this page will stop microphone recording, cancel question audio playback, and forfeit unsaved question evaluations.',
+        confirmLabel: 'Leave Interview',
+        cancelLabel: 'Continue Interview',
+        onConfirmLeave: () => {
+          stopSpeaking();
+          stopMicrophoneAndAcoustics(false);
+          if (recognitionRef.current) {
+            try {
+              recognitionRef.current.abort();
+            } catch (_) {}
+          }
+          setSessionState('idle');
+          setUserAnswer('');
+          baseTextRef.current = '';
+        },
+      });
+    } else {
+      setNavigationGuard(null);
+    }
+
+    return () => {
+      setNavigationGuard(null);
+    };
+  }, [sessionState, setNavigationGuard]);
+
+  // Autonomous Hands-Free Progression: Silence Detection Engine
+  useEffect(() => {
+    if (sessionState !== 'listening' || !liveVoiceMode || isAdvancingRef.current) {
+      setSilenceNotice(null);
+      return;
+    }
+
+    const silenceCheckInterval = setInterval(() => {
+      if (sessionState !== 'listening' || !liveVoiceMode || isAdvancingRef.current) {
+        return;
+      }
+
+      const words = userAnswer.trim().split(/\s+/).filter(Boolean).length;
+      if (words >= 3) {
+        const silenceDuration = Date.now() - lastSpeechTimestampRef.current;
+        if (silenceDuration >= 2800) {
+          setSilenceNotice('Answer captured (silence detected). Auto-submitting...');
+          clearInterval(silenceCheckInterval);
+          setTimeout(() => {
+            setSilenceNotice(null);
+            handlePassAndAdvance();
+          }, 350);
+        } else if (silenceDuration >= 1700) {
+          setSilenceNotice('Pause detected... finalizing in 1s');
+        } else {
+          setSilenceNotice(null);
+        }
+      } else {
+        setSilenceNotice(null);
+      }
+    }, 300);
+
+    return () => clearInterval(silenceCheckInterval);
+  }, [sessionState, liveVoiceMode, userAnswer]);
 
   // Start microphone listening for current question
   const startListeningForCurrentQuestion = async () => {
@@ -880,8 +1118,42 @@ export default function MockInterviewAssistant() {
     }
   };
 
-  // Start interview session from question 0
+  // Single Microphone Setup Actions
   const startInterview = () => {
+    if (speechSupported && liveVoiceMode) {
+      setSessionState('request_permission');
+    } else {
+      startInterviewWorkflow(false);
+    }
+  };
+
+  const handleAuthorizeMicrophoneAndStart = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      mediaStreamRef.current = stream;
+      setMicPermissionDenied(false);
+      setLiveVoiceMode(true);
+      startInterviewWorkflow(true);
+    } catch (err: any) {
+      console.warn('Microphone permission request error:', err);
+      setMicPermissionDenied(true);
+    }
+  };
+
+  const handleStartTypedMode = () => {
+    setLiveVoiceMode(false);
+    setMicPermissionDenied(false);
+    startInterviewWorkflow(false);
+  };
+
+  const startInterviewWorkflow = (isVoice: boolean) => {
+    setLiveVoiceMode(isVoice);
     setSessionState('asking');
     setCurrentQuestionIdx(0);
     setTimerSeconds(0);
@@ -901,14 +1173,19 @@ export default function MockInterviewAssistant() {
       sessionStorage.removeItem(STORAGE_SESSION_KEY);
     } catch (_) {}
 
-    const firstQuestion = TRACK_QUESTIONS[selectedTrack].questions[0];
-
-    speakText(
-      `Welcome to your simulated placement interview for ${TRACK_QUESTIONS[selectedTrack].title}. Question 1: ${firstQuestion.question}`,
-      () => {
-        startListeningForCurrentQuestion();
-      }
+    const introQ = createIntroductoryQuestion(
+      selectedTrack,
+      user?.full_name || (user as any)?.fullName || (user as any)?.name
     );
+    setDynamicQuestions([introQ]);
+
+    speakText(introQ.question, () => {
+      if (isVoice) {
+        startListeningForCurrentQuestion();
+      } else {
+        setSessionState('listening');
+      }
+    });
   };
 
   // Resume an interrupted session
@@ -1026,7 +1303,7 @@ export default function MockInterviewAssistant() {
     return evalPromise;
   };
 
-  // PASS & AUTOMATIC ADVANCEMENT WORKFLOW
+  // PASS & AUTOMATIC ADVANCEMENT WORKFLOW WITH DYNAMIC QUESTION GENERATION
   const handlePassAndAdvance = async (textToSubmit?: string) => {
     if (isAdvancingRef.current) return;
     isAdvancingRef.current = true;
@@ -1049,16 +1326,18 @@ export default function MockInterviewAssistant() {
       ? extractAcousticTelemetry(finalAnswerText)
       : { isTypedAnswer: true, fillerCount: 0, fillerWords: [] };
 
-    stopMicrophoneAndAcoustics();
+    // PRESERVE STREAM ACROSS QUESTIONS (NO RE-PROMPTING)
+    stopMicrophoneAndAcoustics(true);
 
     // 3. Save Answer Record
+    const curQ = currentQuestion;
     const savedAnswer: SavedAnswer = {
-      questionId: currentQuestion.id,
+      questionId: curQ.id,
       questionIndex: currentQuestionIdx,
-      questionText: currentQuestion.question,
-      category: currentQuestion.category,
-      keyPoints: currentQuestion.keyPoints,
-      sampleDemoAnswer: currentQuestion.sampleDemoAnswer,
+      questionText: curQ.question,
+      category: curQ.category,
+      keyPoints: curQ.keyPoints,
+      sampleDemoAnswer: curQ.sampleDemoAnswer,
       userAnswer: finalAnswerText,
       acousticTelemetry: telemetry,
       timestamp: Date.now(),
@@ -1085,34 +1364,48 @@ export default function MockInterviewAssistant() {
     // 4. Trigger Background Gemini Evaluation (does NOT block next question!)
     evaluateAnswerInBackground(savedAnswer);
 
-    // 5. Check if there are more questions
+    // 5. Dynamic Next Question or Finalization
     const nextIdx = currentQuestionIdx + 1;
+    const maxTotalQuestions = 4;
 
-    if (nextIdx < activeQuestions.length) {
-      // AUTOMATIC PROGRESSION: Cue next question immediately
-      setSessionState('moving_to_next');
+    if (nextIdx < maxTotalQuestions) {
+      setSessionState('generating_question');
       setUserAnswer('');
       baseTextRef.current = '';
 
-      setTimeout(() => {
-        setCurrentQuestionIdx(nextIdx);
-        setSessionState('asking');
-        isAdvancingRef.current = false;
+      // Generate adaptive next question with Gemini & LangGraph
+      const nextQ = await fetchNextDynamicQuestion(
+        nextIdx,
+        finalAnswerText,
+        dynamicQuestions.length > 0 ? dynamicQuestions : [curQ]
+      );
 
-        const nextQuestion = activeQuestions[nextIdx];
-        speakText(
-          `Question ${nextIdx + 1}: ${nextQuestion.question}`,
-          () => {
-            startListeningForCurrentQuestion();
-          }
-        );
-      }, 500);
+      setDynamicQuestions((prev) => {
+        const nextList = [...prev];
+        nextList[nextIdx] = nextQ;
+        return nextList;
+      });
+
+      setCurrentQuestionIdx(nextIdx);
+      setSessionState('asking');
+      isAdvancingRef.current = false;
+
+      speakText(nextQ.question, () => {
+        if (liveVoiceMode) {
+          startListeningForCurrentQuestion();
+        } else {
+          setSessionState('listening');
+        }
+      });
     } else {
       // ALL QUESTIONS COMPLETED: Transition to Finalizing Results
       setSessionState('finalizing_results');
       setUserAnswer('');
       baseTextRef.current = '';
       isAdvancingRef.current = false;
+
+      // Clean up media stream when session is genuinely completed
+      stopMicrophoneAndAcoustics(false);
 
       // Finalize all background evaluations
       await finalizeAllEvaluations(updatedAnswers);
@@ -1259,6 +1552,37 @@ export default function MockInterviewAssistant() {
     );
   }, [evaluations]);
 
+  // Category Breakdown Scores (Introductory HR vs Practical Problem Solving vs Technical Architecture)
+  const categoryBreakdown = useMemo(() => {
+    if (!evaluations.length) {
+      return { introHr: 0, problemSolving: 0, technicalArch: 0 };
+    }
+
+    const introEvals = evaluations.filter(
+      (e, i) => i === 0 || e.question.toLowerCase().includes('introduction') || (e as any).category === 'behavioral'
+    );
+    const psEvals = evaluations.filter(
+      (e, i) => i === 1 || e.question.toLowerCase().includes('project') || (e as any).category === 'problem_solving'
+    );
+    const techEvals = evaluations.filter(
+      (e, i) => i >= 2 || (e as any).category === 'technical' || (e as any).category === 'architecture'
+    );
+
+    const introHr = introEvals.length
+      ? Math.round(introEvals.reduce((a, e) => a + e.communication, 0) / introEvals.length)
+      : Math.round(evaluations.reduce((a, e) => a + e.communication, 0) / evaluations.length);
+
+    const problemSolving = psEvals.length
+      ? Math.round(psEvals.reduce((a, e) => a + e.problemSolving, 0) / psEvals.length)
+      : Math.round(evaluations.reduce((a, e) => a + e.problemSolving, 0) / evaluations.length);
+
+    const technicalArch = techEvals.length
+      ? Math.round(techEvals.reduce((a, e) => a + e.technical, 0) / techEvals.length)
+      : Math.round(evaluations.reduce((a, e) => a + e.technical, 0) / evaluations.length);
+
+    return { introHr, problemSolving, technicalArch };
+  }, [evaluations]);
+
   // Delivery Telemetry Aggregates across all questions
   const deliveryAggregates = useMemo(() => {
     if (!evaluations.length) {
@@ -1364,6 +1688,14 @@ export default function MockInterviewAssistant() {
                   ? 'Listening'
                   : sessionState === 'asking'
                   ? 'Speaking Question'
+                  : sessionState === 'generating_question'
+                  ? 'Formulating Question (Gemini)'
+                  : sessionState === 'saving_answer' || sessionState === 'moving_to_next'
+                  ? 'Processing Answer'
+                  : sessionState === 'paused'
+                  ? 'Interview Paused'
+                  : sessionState === 'request_permission'
+                  ? 'Setup Microphone'
                   : sessionState === 'finalizing_results'
                   ? 'Compiling Scorecard'
                   : 'Ready'}
@@ -1434,9 +1766,13 @@ export default function MockInterviewAssistant() {
 
                 <p className="text-xs text-purple-200 mt-0.5">
                   {isSpeaking
-                    ? 'Asking question aloud...'
+                    ? 'Interviewer is speaking question aloud (Microphone muted to eliminate echo)...'
+                    : sessionState === 'generating_question'
+                    ? 'Gemini & LangGraph formulating adaptive question based on your response...'
+                    : sessionState === 'paused'
+                    ? 'Session paused. Say "Resume interview" or click resume.'
                     : isListening
-                    ? `Listening to answer... (RMS: ${liveVolumeLevel}%)`
+                    ? `Listening live... (RMS: ${liveVolumeLevel}%)${silenceNotice ? ` • ${silenceNotice}` : ''}`
                     : sessionState === 'finalizing_results'
                     ? `Synthesizing final scorecard (${completedEvalCount}/${activeQuestions.length})...`
                     : 'Awaiting instruction'}
@@ -1517,6 +1853,69 @@ export default function MockInterviewAssistant() {
           </div>
         </div>
       </div>
+
+      {/* STATE: One-Time Single Microphone Setup Modal */}
+      {sessionState === 'request_permission' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-indigo-600/30 shrink-0">
+                <Mic className="w-7 h-7" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-950/60 px-2.5 py-0.5 rounded-full border border-purple-200 dark:border-purple-800">
+                  Continuous Voice Platform
+                </span>
+                <h3 className="text-xl font-extrabold text-slate-900 dark:text-white mt-1">
+                  Autonomous Voice Interview
+                </h3>
+              </div>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              This mock interview operates like an authentic campus technical round. Please authorize your microphone to enable continuous voice interaction with Google Gemini.
+            </p>
+
+            <div className="space-y-3 bg-slate-50 dark:bg-slate-950/60 p-4 rounded-2xl border border-slate-200 dark:border-slate-800/80 text-xs">
+              <div className="flex items-start gap-2.5 text-slate-700 dark:text-slate-300">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                <span><strong>Single Authorization:</strong> Permission is requested only once for the entire session. No repeated browser prompts between questions.</span>
+              </div>
+              <div className="flex items-start gap-2.5 text-slate-700 dark:text-slate-300">
+                <ShieldCheck className="w-4 h-4 text-indigo-500 shrink-0 mt-0.5" />
+                <span><strong>Echo Cancellation:</strong> The microphone automatically mutes while the AI interviewer speaks to prevent speaker feedback or self-transcription.</span>
+              </div>
+              <div className="flex items-start gap-2.5 text-slate-700 dark:text-slate-300">
+                <Zap className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <span><strong>Silence Detection:</strong> Once you finish speaking (approx. 2.8s of silence), your response is automatically captured without touching the keyboard.</span>
+              </div>
+            </div>
+
+            {micPermissionDenied && (
+              <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>Microphone access was blocked by the browser. You can still proceed seamlessly with typed-answer mode.</span>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+              <button
+                onClick={handleAuthorizeMicrophoneAndStart}
+                className="w-full sm:flex-1 py-3 px-5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/25 transition-all"
+              >
+                <Mic className="w-4 h-4" />
+                <span>Allow Microphone & Start Interview</span>
+              </button>
+              <button
+                onClick={handleStartTypedMode}
+                className="w-full sm:w-auto py-3 px-4 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold transition-all"
+              >
+                Use Typed Mode
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* STATE 1: Track Selection */}
       {sessionState === 'idle' && (
@@ -1630,11 +2029,13 @@ export default function MockInterviewAssistant() {
         </div>
       )}
 
-      {/* STATE 2: ACTIVE CONVERSATIONAL INTERVIEW FLOW (Asking / Listening / Transitioning) */}
+      {/* STATE 2: ACTIVE CONVERSATIONAL INTERVIEW FLOW (Asking / Listening / Transitioning / Generating / Paused) */}
       {(sessionState === 'asking' ||
         sessionState === 'listening' ||
         sessionState === 'saving_answer' ||
-        sessionState === 'moving_to_next') &&
+        sessionState === 'moving_to_next' ||
+        sessionState === 'generating_question' ||
+        sessionState === 'paused') &&
         currentQuestion && (
           <div className="space-y-5">
             {/* Live Command Notification Banner */}
@@ -1642,6 +2043,35 @@ export default function MockInterviewAssistant() {
               <div className="p-3 rounded-xl bg-purple-50 dark:bg-purple-950/50 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 flex items-center gap-2 text-xs font-semibold animate-pulse shadow-sm">
                 <Zap className="w-4 h-4 text-purple-600" />
                 <span>{detectedCommandNotice}</span>
+              </div>
+            )}
+
+            {/* Adaptive Question Generation Banner */}
+            {sessionState === 'generating_question' && (
+              <div className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-950/60 border border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 flex items-center justify-between text-xs shadow-sm">
+                <div className="flex items-center gap-2.5 font-semibold">
+                  <Bot className="w-5 h-5 text-purple-600 animate-spin" />
+                  <span>Google Gemini & LangGraph are crafting your next adaptive question based on your response...</span>
+                </div>
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full bg-purple-200/60 dark:bg-purple-900/60 font-bold uppercase">
+                  Synthesizing
+                </span>
+              </div>
+            )}
+
+            {/* Paused Session Banner */}
+            {sessionState === 'paused' && (
+              <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 flex items-center justify-between text-xs shadow-sm">
+                <div className="flex items-center gap-2.5 font-semibold">
+                  <PauseCircle className="w-5 h-5 text-amber-600" />
+                  <span>Interview is currently paused. Speech recognition and timers are on hold.</span>
+                </div>
+                <button
+                  onClick={() => startListeningForCurrentQuestion()}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold transition-all shadow-sm"
+                >
+                  Resume Interview
+                </button>
               </div>
             )}
 
@@ -1774,7 +2204,13 @@ export default function MockInterviewAssistant() {
                 />
 
                 <div className="absolute right-3 bottom-3 flex items-center gap-3 text-[11px] text-slate-400">
-                  {isListening && (
+                  {silenceNotice && (
+                    <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400 font-bold animate-pulse">
+                      <Zap className="w-3.5 h-3.5 text-amber-500" />
+                      {silenceNotice}
+                    </span>
+                  )}
+                  {isListening && !silenceNotice && (
                     <span className="flex items-center gap-1 text-rose-500 font-semibold animate-pulse">
                       <Activity className="w-3.5 h-3.5" />
                       Listening (Say "Pass" to advance)
@@ -2028,6 +2464,82 @@ export default function MockInterviewAssistant() {
               </div>
             </div>
 
+            {/* Stage-By-Stage Progression Breakdown (Introductory HR vs Technical) */}
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <BrainCircuit className="w-4 h-4 text-purple-500" />
+                Interview Phase Progression & Alignment
+              </h3>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* 1. Introductory & HR Alignment */}
+                <div className="p-4 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-indigo-900 dark:text-indigo-300 flex items-center gap-1.5">
+                      <Briefcase className="w-4 h-4 text-indigo-600" />
+                      Introductory & HR Alignment
+                    </span>
+                    <span className="font-extrabold text-base text-indigo-600 dark:text-indigo-400">
+                      {categoryBreakdown.introHr}%
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                    Evaluates self-introduction, engineering branch choice, vocal clarity, and career direction.
+                  </p>
+                  <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      style={{ width: `${categoryBreakdown.introHr}%` }}
+                      className="bg-indigo-600 h-full rounded-full transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Practical Problem-Solving (STAR Method) */}
+                <div className="p-4 rounded-2xl bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-purple-900 dark:text-purple-300 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-purple-600" />
+                      Practical Problem-Solving (STAR)
+                    </span>
+                    <span className="font-extrabold text-base text-purple-600 dark:text-purple-400">
+                      {categoryBreakdown.problemSolving}%
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                    Assesses real project architecture, roadblock resolution, and concrete engineering outcomes.
+                  </p>
+                  <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      style={{ width: `${categoryBreakdown.problemSolving}%` }}
+                      className="bg-purple-600 h-full rounded-full transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Core Technical & Architecture */}
+                <div className="p-4 rounded-2xl bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800/50 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
+                      <Code2 className="w-4 h-4 text-blue-600" />
+                      Technical Depth & Architecture
+                    </span>
+                    <span className="font-extrabold text-base text-blue-600 dark:text-blue-400">
+                      {categoryBreakdown.technicalArch}%
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-tight">
+                    Tests concurrency, data structure trade-offs, system boundaries, and database locking.
+                  </p>
+                  <div className="w-full bg-slate-200 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                    <div
+                      style={{ width: `${categoryBreakdown.technicalArch}%` }}
+                      className="bg-blue-600 h-full rounded-full transition-all"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Comprehensive Voice Modulation & Delivery Analysis Summary */}
             <div className="p-6 rounded-3xl bg-gradient-to-br from-purple-50/70 via-white to-indigo-50/40 dark:from-purple-950/20 dark:via-slate-900 dark:to-indigo-950/20 border border-purple-200/80 dark:border-purple-800/50 space-y-4">
               <div className="flex items-center justify-between">
@@ -2264,6 +2776,102 @@ export default function MockInterviewAssistant() {
               </div>
             </div>
 
+            {/* 7-Day Targeted Placement Action Plan with In-App Destinations */}
+            <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-indigo-600" />
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900 dark:text-white">
+                    7-Day Personalized Placement Action Plan
+                  </h3>
+                </div>
+                <span className="text-[10px] font-semibold text-slate-400">
+                  Targeted Revision Curriculum
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                {[
+                  {
+                    day: 1,
+                    focus: 'Dynamic Programming & Memory',
+                    task: 'Solve 2 Medium DP problems on Kadane & Knapsack algorithms.',
+                    destination: '/student/dsa-tracker?category=Dynamic%20Programming',
+                    cta: 'Open DSA Tracker',
+                  },
+                  {
+                    day: 2,
+                    focus: 'System Architecture & Caching',
+                    task: 'Study Redis cache invalidation strategies and concurrency limits.',
+                    destination: '/student/career-coach',
+                    cta: 'Open Career Coach',
+                  },
+                  {
+                    day: 3,
+                    focus: 'Database Indexes & Concurrency',
+                    task: 'Review B+ Trees vs LSM Trees and row-level pessimistic locking.',
+                    destination: '/student/academic-truth',
+                    cta: 'View Placement Audit',
+                  },
+                  {
+                    day: 4,
+                    focus: 'Speech Pacing & Communication',
+                    task: 'Practice 3 answers using STAR format (pacing 130–150 WPM).',
+                    destination: '/student/mock-interview',
+                    cta: 'Practice Voice Mock',
+                  },
+                  {
+                    day: 5,
+                    focus: 'Company-Specific Coding Round',
+                    task: 'Solve Category 1 verified historical company problems.',
+                    destination: '/student/dsa-tracker',
+                    cta: 'Start Company Test',
+                  },
+                  {
+                    day: 6,
+                    focus: 'Full Mock Interview Re-Assessment',
+                    task: 'Take full 4-question autonomous mock interview round.',
+                    destination: '/student/mock-interview',
+                    cta: 'Retake Interview',
+                  },
+                  {
+                    day: 7,
+                    focus: 'CGPA & Placement Criteria Audit',
+                    task: 'Audit academic cutoffs for upcoming campus recruitment drives.',
+                    destination: '/student/cgpa-calculator',
+                    cta: 'Audit CGPA Eligibility',
+                  },
+                ].map((plan) => (
+                  <div
+                    key={plan.day}
+                    className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex flex-col justify-between gap-2.5"
+                  >
+                    <div>
+                      <div className="flex items-center justify-between">
+                        <span className="px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-extrabold text-[10px]">
+                          Day {plan.day}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          {plan.focus}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-700 dark:text-slate-300 mt-2 leading-relaxed">
+                        {plan.task}
+                      </p>
+                    </div>
+
+                    <Link
+                      href={plan.destination}
+                      className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 pt-1"
+                    >
+                      <span>{plan.cta}</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* Detailed Question-By-Question Audit Table */}
             <div className="space-y-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center justify-between">
@@ -2387,14 +2995,36 @@ export default function MockInterviewAssistant() {
                             </div>
                           </div>
 
-                          {/* Model Answer */}
-                          <div className="p-3.5 rounded-xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/30 space-y-1">
-                            <span className="font-bold text-emerald-800 dark:text-emerald-300 text-[11px]">
-                              Exemplary Model Reference Answer:
-                            </span>
+                          {/* STAR Framework Model Answer */}
+                          <div className="p-4 rounded-2xl bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/30 space-y-2.5">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-emerald-900 dark:text-emerald-300 text-[11px] flex items-center gap-1.5">
+                                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                                STAR Framework Exemplary Reference Answer
+                              </span>
+                              <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400">
+                                Senior Engineering Benchmark
+                              </span>
+                            </div>
+
                             <p className="text-emerald-950 dark:text-emerald-200 leading-relaxed">
                               {ev.modelAnswer || ev.suggestedAnswer}
                             </p>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                              <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-emerald-200/40 dark:border-emerald-800/30">
+                                <strong className="text-emerald-800 dark:text-emerald-400">S (Situation):</strong> State the architectural context, business scale, and operational requirements.
+                              </div>
+                              <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-emerald-200/40 dark:border-emerald-800/30">
+                                <strong className="text-emerald-800 dark:text-emerald-400">T (Task):</strong> Define the primary engineering challenge or latency bottleneck.
+                              </div>
+                              <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-emerald-200/40 dark:border-emerald-800/30">
+                                <strong className="text-emerald-800 dark:text-emerald-400">A (Action):</strong> Explain your specific implementation, algorithms, and trade-offs.
+                              </div>
+                              <div className="p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-emerald-200/40 dark:border-emerald-800/30">
+                                <strong className="text-emerald-800 dark:text-emerald-400">R (Result):</strong> Highlight measurable throughput improvements and error recovery.
+                              </div>
+                            </div>
                           </div>
 
                           {/* Follow-up question if present */}
