@@ -151,7 +151,7 @@ CREATE POLICY "Mentors and staff can view student DSA progress"
     OR EXISTS (
       SELECT 1 FROM public.profiles p
       WHERE p.id = auth.uid()
-      AND p.role IN ('mentor', 'faculty', 'admin', 'placements')
+      AND p.role::text IN ('mentor', 'faculty', 'admin', 'placements', 'placement')
     )
   );
 

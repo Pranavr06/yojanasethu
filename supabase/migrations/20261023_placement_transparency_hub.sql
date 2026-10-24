@@ -70,7 +70,7 @@ USING (
   OR EXISTS (
     SELECT 1 FROM profiles
     WHERE profiles.id = auth.uid()
-      AND profiles.role IN ('placements', 'placement', 'admin')
+      AND profiles.role::text IN ('placements', 'placement', 'admin')
   )
 );
 
@@ -83,7 +83,7 @@ WITH CHECK (
   OR EXISTS (
     SELECT 1 FROM profiles
     WHERE profiles.id = auth.uid()
-      AND profiles.role IN ('placements', 'placement', 'admin')
+      AND profiles.role::text IN ('placements', 'placement', 'admin')
   )
 );
 
@@ -96,7 +96,7 @@ USING (
   OR EXISTS (
     SELECT 1 FROM profiles
     WHERE profiles.id = auth.uid()
-      AND profiles.role IN ('placements', 'placement', 'admin')
+      AND profiles.role::text IN ('placements', 'placement', 'admin')
   )
 );
 
@@ -109,7 +109,7 @@ USING (
   OR EXISTS (
     SELECT 1 FROM profiles
     WHERE profiles.id = auth.uid()
-      AND profiles.role IN ('placements', 'placement', 'admin')
+      AND profiles.role::text IN ('placements', 'placement', 'admin')
   )
 );
 

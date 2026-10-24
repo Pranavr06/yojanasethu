@@ -2,6 +2,16 @@
 -- YojanaSethu: Mentor-Mentee Allocation & 12-Mentee Limit Gate
 -- ========================================================
 
+-- 0. Safely add 'placements' to user_role_enum if it exists
+DO $$
+BEGIN
+  ALTER TYPE public.user_role_enum ADD VALUE IF NOT EXISTS 'placements';
+EXCEPTION
+  WHEN duplicate_object THEN null;
+  WHEN undefined_object THEN null;
+  WHEN others THEN null;
+END $$;
+
 -- 1. Extend profiles with mentor_id column
 ALTER TABLE IF EXISTS public.profiles
 ADD COLUMN IF NOT EXISTS mentor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
@@ -57,12 +67,23 @@ ON public.mentor_assignments FOR ALL TO authenticated
 USING (
   EXISTS (
     SELECT 1 FROM public.profiles p
-    WHERE p.id = auth.uid() AND p.role IN ('placements', 'placement', 'admin')
+    WHERE p.id = auth.uid() AND p.role::text IN ('placements', 'placement', 'admin')
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.user_roles ur
+    WHERE ur.user_id = auth.uid() AND ur.role::text IN ('placements', 'placement', 'admin')
   )
 )
 WITH CHECK (
   EXISTS (
     SELECT 1 FROM public.profiles p
-    WHERE p.id = auth.uid() AND p.role IN ('placements', 'placement', 'admin')
+    WHERE p.id = auth.uid() AND p.role::text IN ('placements', 'placement', 'admin')
+  )
+  OR EXISTS (
+    SELECT 1 FROM public.user_roles ur
+    WHERE ur.user_id = auth.uid() AND ur.role::text IN ('placements', 'placement', 'admin')
   )
 );
+
+-- 5. Reload schema cache in PostgREST
+NOTIFY pgrst, 'reload schema';
