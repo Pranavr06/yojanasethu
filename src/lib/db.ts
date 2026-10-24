@@ -1243,9 +1243,9 @@ export async function dbGetMentorMentees(options?: {
 
       return {
         id: p.id,
-        full_name: p.full_name,
+        full_name: p.full_name || 'Student',
         email: p.email,
-        usn: p.usn,
+        usn: p.usn || 'N/A',
         semester: p.semester || 6,
         department_code: (p as any).departments?.code || 'ISE',
         department_name: (p as any).departments?.name || 'Department',
@@ -2813,7 +2813,7 @@ export async function dbGetRecruiters(): Promise<RecruiterProfile[]> {
         profiles.forEach((p: any) => {
           result.push({
             id: p.id,
-            full_name: p.full_name,
+            full_name: p.full_name || 'Student',
             email: p.email,
             phone: p.phone,
             designation: p.designation || p.recruiter_title || 'Talent Acquisition Partner',
