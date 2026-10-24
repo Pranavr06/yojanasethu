@@ -48,6 +48,8 @@ async function runAllTests() {
     await runResumeBuilderTests();
     const { runPermanentResumeTests } = require('./test-permanent-resume.ts');
     await runPermanentResumeTests();
+    const { runLinksAnalyzerTests } = require('./test-links-analyzer.ts');
+    await runLinksAnalyzerTests();
   } catch (err) {
     console.error('Test execution failed:', err);
     process.exit(1);

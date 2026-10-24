@@ -35,6 +35,8 @@ import {
   ResumeAnalysisResult,
   ResumeCertification,
   StudentUploadedResume,
+  StudentProfileLinks,
+  LinksAnalysisReport,
 } from '@/types';
 import {
   gradeAssessmentSubmission,
@@ -3297,8 +3299,10 @@ export function dbBuildDefaultResumeFromProfile(student: FullStudentProfile): Re
       email: profile.email || 'student@nmamit.in',
       phone: profile.phone || '+91 98765 43210',
       location: 'Nitte, Karnataka, India',
-      linkedin: 'linkedin.com/in/' + (profile.full_name?.toLowerCase().replace(/\s+/g, '-') || 'student'),
-      github: 'github.com/' + (profile.usn?.toLowerCase() || 'student'),
+      linkedin: profile.linkedin_url || ('linkedin.com/in/' + (profile.full_name?.toLowerCase().replace(/\s+/g, '-') || 'student')),
+      github: profile.github_url || (profile.github_username ? ('github.com/' + profile.github_username) : ('github.com/' + (profile.usn?.toLowerCase() || 'student'))),
+      codingProfile: (profile as any).leetcode_url || (profile as any).coding_profile_url || undefined,
+      leetcode: (profile as any).leetcode_url || undefined,
     },
     summary: `Dedicated ${departmentName} undergraduate with a verified CGPA of ${ar?.cgpa ? ar.cgpa.toFixed(2) : '8.5'}/10.0 and hands-on proficiency in modern software engineering. Strong background in scalable system architecture, algorithmic problem solving, and building reliable distributed applications.`,
     targetRole: student.target_role || 'Software Development Engineer',
@@ -3579,5 +3583,211 @@ export async function dbDeleteStudentUploadedResume(studentIdOrIdentifier: strin
     cohortProfile.resume_uploaded_at = null;
   }
 
+  return true;
+}
+// ============================================================================
+// SHARED STUDENT PROFILE LINKS & LINKS ANALYZER PERSISTENCE
+// ============================================================================
+
+const memoryStudentLinks = new Map<string, StudentProfileLinks>();
+const memoryStudentLinksAnalysis = new Map<string, LinksAnalysisReport>();
+
+/**
+ * Fetch a student's shared profile links (LinkedIn, GitHub, LeetCode / Coding profile).
+ * Serves as the single shared source of truth for both Links Analyzer and AI Resume Builder.
+ */
+export async function dbGetStudentProfileLinks(studentIdOrIdentifier: string): Promise<StudentProfileLinks> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  // 1. Try Supabase profiles table
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, linkedin_url, github_username, github_url, leetcode_url, coding_profile_url, target_career_role, updated_at')
+        .eq('id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data) {
+        return {
+          student_id: data.id,
+          linkedin_url: data.linkedin_url || undefined,
+          github_url: data.github_url || (data.github_username ? `https://github.com/${data.github_username}` : undefined),
+          leetcode_url: data.leetcode_url || data.coding_profile_url || undefined,
+          target_role: data.target_career_role || 'Software Development Engineer',
+          updated_at: data.updated_at,
+        };
+      }
+    } catch (err) {
+      console.warn('dbGetStudentProfileLinks database lookup error:', err);
+    }
+  }
+
+  // 2. Check in-memory store
+  const cached = memoryStudentLinks.get(resolvedStudentId);
+  if (cached) return cached;
+
+  // 3. Check seeded cohort profile
+  const cohort = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohort) {
+    const rawGithub = (cohort as any).github_url || (cohort.github_username ? `https://github.com/${cohort.github_username}` : undefined);
+    return {
+      student_id: cohort.id,
+      linkedin_url: cohort.linkedin_url || `https://linkedin.com/in/${cohort.full_name.toLowerCase().replace(/\s+/g, '-')}`,
+      github_url: rawGithub || `https://github.com/${(cohort.usn || 'student').toLowerCase()}`,
+      leetcode_url: (cohort as any).leetcode_url || (cohort as any).coding_profile_url || `https://leetcode.com/${(cohort.usn || 'student').toLowerCase()}`,
+      target_role: cohort.target_career_role || 'Software Development Engineer',
+    };
+  }
+
+  // Default fallback for demo student
+  return {
+    student_id: resolvedStudentId,
+    linkedin_url: 'https://linkedin.com/in/pranav-r',
+    github_url: 'https://github.com/pranavr06',
+    leetcode_url: 'https://leetcode.com/pranav_r',
+    target_role: 'Software Development Engineer',
+  };
+}
+
+/**
+ * Save or update a student's shared profile links.
+ * Updates public.profiles table so both Links Analyzer and Resume Builder stay strictly synced.
+ */
+export async function dbSaveStudentProfileLinks(
+  studentIdOrIdentifier: string,
+  links: StudentProfileLinks
+): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const record: StudentProfileLinks = {
+    ...links,
+    student_id: resolvedStudentId,
+    updated_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // Extract github username if full URL is passed
+      let githubUsername: string | undefined = undefined;
+      if (links.github_url) {
+        const match = links.github_url.match(/github\.com\/([^/?#]+)/i);
+        if (match && match[1]) githubUsername = match[1];
+      }
+
+      const updatePayload: any = {
+        updated_at: now,
+      };
+      if (links.linkedin_url !== undefined) updatePayload.linkedin_url = links.linkedin_url;
+      if (links.github_url !== undefined) updatePayload.github_url = links.github_url;
+      if (githubUsername) updatePayload.github_username = githubUsername;
+      if (links.leetcode_url !== undefined) {
+        updatePayload.leetcode_url = links.leetcode_url;
+        updatePayload.coding_profile_url = links.leetcode_url;
+      }
+      if (links.target_role !== undefined) updatePayload.target_career_role = links.target_role;
+
+      await supabase
+        .from('profiles')
+        .update(updatePayload)
+        .eq('id', resolvedStudentId);
+    } catch (err) {
+      console.warn('dbSaveStudentProfileLinks database update exception:', err);
+    }
+  }
+
+  memoryStudentLinks.set(resolvedStudentId, record);
+
+  const cohort = ALL_COHORT_PROFILES.find(
+    (p) => p.id === resolvedStudentId || p.usn?.toLowerCase() === studentIdOrIdentifier.toLowerCase()
+  );
+  if (cohort) {
+    if (links.linkedin_url !== undefined) cohort.linkedin_url = links.linkedin_url;
+    if (links.github_url !== undefined) (cohort as any).github_url = links.github_url;
+    if (links.leetcode_url !== undefined) {
+      (cohort as any).leetcode_url = links.leetcode_url;
+      (cohort as any).coding_profile_url = links.leetcode_url;
+    }
+    if (links.target_role !== undefined) cohort.target_career_role = links.target_role;
+  }
+
+  return true;
+}
+
+/**
+ * Fetch saved Links Analysis report for a student.
+ */
+export async function dbGetStudentLinksAnalysis(studentIdOrIdentifier: string): Promise<LinksAnalysisReport | null> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('student_links_analysis')
+        .select('*')
+        .eq('student_id', resolvedStudentId)
+        .maybeSingle();
+
+      if (!error && data && data.analysis_report) {
+        return {
+          ...data.analysis_report,
+          id: data.id,
+          student_id: data.student_id,
+          target_role: data.target_role,
+          target_job_description: data.target_job_description,
+          analyzed_at: data.updated_at || data.created_at,
+        } as LinksAnalysisReport;
+      }
+    } catch (err) {
+      console.warn('dbGetStudentLinksAnalysis database error:', err);
+    }
+  }
+
+  return memoryStudentLinksAnalysis.get(resolvedStudentId) || null;
+}
+
+/**
+ * Save or update a student's Links Analysis report.
+ * Stored separately from resumes so analysis recommendations never mutate resume documents automatically.
+ */
+export async function dbSaveStudentLinksAnalysis(
+  studentIdOrIdentifier: string,
+  report: LinksAnalysisReport
+): Promise<boolean> {
+  const resolvedStudentId = (await dbResolveStudentProfileId(studentIdOrIdentifier)) || studentIdOrIdentifier;
+  const now = new Date().toISOString();
+
+  const fullReport: LinksAnalysisReport = {
+    ...report,
+    student_id: resolvedStudentId,
+    analyzed_at: now,
+  };
+
+  if (isSupabaseConfigured && supabase) {
+    try {
+      await supabase
+        .from('student_links_analysis')
+        .upsert(
+          {
+            student_id: resolvedStudentId,
+            target_role: report.target_role,
+            target_job_description: report.target_job_description || null,
+            linkedin_url: report.linkedin_analysis?.url || null,
+            github_url: report.github_analysis?.url || null,
+            leetcode_url: report.leetcode_analysis?.url || null,
+            analysis_report: fullReport,
+            updated_at: now,
+          },
+          { onConflict: 'student_id' }
+        );
+    } catch (err) {
+      console.warn('dbSaveStudentLinksAnalysis database exception:', err);
+    }
+  }
+
+  memoryStudentLinksAnalysis.set(resolvedStudentId, fullReport);
   return true;
 }

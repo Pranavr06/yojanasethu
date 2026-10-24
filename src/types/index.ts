@@ -87,7 +87,10 @@ export interface Profile {
   semester?: number | null;
   graduation_year?: number | null;
   github_username?: string | null;
+  github_url?: string | null;
   linkedin_url?: string | null;
+  leetcode_url?: string | null;
+  coding_profile_url?: string | null;
   portfolio_url?: string | null;
   recruiter_consent?: boolean;
   designation?: string | null;
@@ -661,6 +664,8 @@ export interface ResumeContact {
   location: string;
   linkedin?: string;
   github?: string;
+  codingProfile?: string;
+  leetcode?: string;
   portfolio?: string;
 }
 
@@ -782,4 +787,69 @@ export interface SavedResume {
   analysis_result?: ResumeAnalysisResult | null;
   created_at: string;
   updated_at: string;
+}
+// ========================================================
+// LINKS ANALYZER & PROFILE AUDIT TYPES
+// ========================================================
+
+export interface StudentProfileLinks {
+  student_id?: string;
+  linkedin_url?: string;
+  github_url?: string;
+  leetcode_url?: string;
+  target_role?: string;
+  target_job_description?: string;
+  updated_at?: string;
+}
+
+export interface LinksAnalysisReport {
+  id?: string;
+  student_id?: string;
+  target_role: string;
+  target_job_description?: string;
+  analyzed_at: string;
+  ai_provider: 'gemini' | 'deterministic_fallback';
+  overall_assessment: {
+    readiness_score: number; // 0 - 100
+    executive_summary: string;
+    visibility_rating: 'Exceptional' | 'Competitive' | 'Developing' | 'Needs Attention';
+    key_takeaway: string;
+  };
+  strengths: string[];
+  missing_information: string[];
+  improvement_areas: string[];
+  linkedin_analysis?: {
+    url?: string;
+    status: 'accessible' | 'limited' | 'not_provided';
+    headline_critique: string;
+    summary_critique: string;
+    missing_sections: string[];
+    experience_projects_critique: string;
+    skills_recommendations: string[];
+    actionable_tips: string[];
+  };
+  github_analysis?: {
+    url?: string;
+    status: 'accessible' | 'limited' | 'not_provided';
+    portfolio_completeness: string;
+    repository_presentation_critique: string;
+    readme_documentation_critique: string;
+    code_quality_and_stack: string;
+    highlighted_projects: string[];
+    actionable_tips: string[];
+  };
+  leetcode_analysis?: {
+    url?: string;
+    status: 'accessible' | 'limited' | 'not_provided';
+    problem_solving_tier: string;
+    difficulty_distribution_critique: string;
+    dsa_preparation_gaps: string[];
+    recommended_practice_topics: string[];
+    actionable_tips: string[];
+  };
+  personalized_roadmap: {
+    week: number;
+    phase_title: string;
+    tasks: string[];
+  }[];
 }
