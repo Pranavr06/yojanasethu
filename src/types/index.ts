@@ -524,6 +524,58 @@ export interface HistoricalPlacementStats {
   top_recruiters: HistoricalRecruiterRecord[];
 }
 
+export interface PlacedStudentRecord {
+  id: string;
+  student_id: string;
+  student_name: string;
+  student_usn: string;
+  department_code: string;
+  department_name?: string;
+  company_name: string;
+  role_title: string;
+  ctc_lpa: number;
+  placed_at: string;
+  is_verified: boolean;
+  offer_letter_url?: string | null;
+  season?: string;
+}
+
+export interface CandidateSkillGap {
+  student_id: string;
+  student_name: string;
+  student_usn: string;
+  department_code: string;
+  cgpa: number;
+  match_score: number;
+  lacking_skills: {
+    skill_name: string;
+    importance: 'mandatory' | 'preferred';
+    reason: string;
+  }[];
+  possessed_skills: string[];
+  gemini_recommendation: string;
+}
+
+export interface GeminiDriveSkillGapAnalysis {
+  drive_id: string;
+  company_name: string;
+  role_title: string;
+  ctc_lpa: number;
+  analyzed_at: string;
+  ai_provider: 'gemini' | 'deterministic_fallback';
+  total_candidates_evaluated: number;
+  eligible_candidates_count: number;
+  top_lacking_skills: {
+    skill_name: string;
+    missing_count: number;
+    percentage: number;
+    importance: 'mandatory' | 'preferred';
+  }[];
+  eligible_candidates: CandidateSkillGap[];
+  executive_summary: string;
+  preparation_advisory: string;
+}
+
 // ============================================================================
 // CERTIFICATE ASSESSMENT, VERIFICATION DESK & QR PASSPORT TYPES
 // ============================================================================

@@ -18,8 +18,10 @@ import {
   ChevronRight,
   AlertCircle,
   TrendingUp,
+  Bot,
 } from 'lucide-react';
 import { PlacementDrive } from '@/types';
+import GeminiDriveSkillGapModal from '@/components/GeminiDriveSkillGapModal';
 
 export default function RecruiterDrivesPage() {
   const [drives, setDrives] = useState<PlacementDrive[]>([]);
@@ -28,6 +30,7 @@ export default function RecruiterDrivesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('all');
   const [minCtcFilter, setMinCtcFilter] = useState<number>(0);
+  const [geminiModalDriveId, setGeminiModalDriveId] = useState<string | null>(null);
 
   const fetchDrives = async () => {
     setLoading(true);
@@ -390,10 +393,27 @@ export default function RecruiterDrivesPage() {
                 >
                   <Layers className="w-3.5 h-3.5" />
                 </Link>
+
+                <button
+                  type="button"
+                  onClick={() => setGeminiModalDriveId(drive.id)}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 text-xs font-bold transition-all"
+                  title="Gemini AI: Eligible Candidates & Missing Skills"
+                >
+                  <Bot className="w-3.5 h-3.5 text-amber-500" />
+                  <span>AI Audit</span>
+                </button>
               </div>
             </div>
           ))}
         </div>
+      )}
+      {geminiModalDriveId && (
+        <GeminiDriveSkillGapModal
+          isOpen={Boolean(geminiModalDriveId)}
+          onClose={() => setGeminiModalDriveId(null)}
+          driveId={geminiModalDriveId}
+        />
       )}
     </div>
   );

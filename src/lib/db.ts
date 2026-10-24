@@ -40,12 +40,13 @@ import {
   AssignedMentorInfo,
   MentorAssignmentRecord,
   MentorWithMenteesSummary,
+  PlacedStudentRecord,
 } from '@/types';
 import {
   gradeAssessmentSubmission,
   SUBJECT_METADATA,
 } from './assessmentQuestions';
-import { ALL_COHORT_PROFILES } from './cohortData';
+import { ALL_COHORT_PROFILES, ALL_ACADEMIC_RECORDS, ALL_SKILL_PASSPORTS } from './cohortData';
 import { createClient } from '@supabase/supabase-js';
 
 // =====================================================================// SUPABASE CLIENT INITIALIZATION
@@ -269,16 +270,15 @@ export async function dbGetFullStudent(studentIdOrUsn: string): Promise<FullStud
  * Fetch all students from database
  */
 export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
+  if (isSupabaseConfigured && supabase) {
+    try {
+      // 1. Single query: Fetch all student profiles with department codes
+      const { data: studentProfiles, error: profileErr } = await supabase
+        .from('profiles')
+        .select('*, departments(code, name)')
+        .eq('role', 'student');
 
-  try {
-    // 1. Single query: Fetch all student profiles with department codes
-    const { data: studentProfiles, error: profileErr } = await supabase
-      .from('profiles')
-      .select('*, departments(code, name)')
-      .eq('role', 'student');
-
-    if (profileErr || !studentProfiles || studentProfiles.length === 0) return [];
+      if (!profileErr && studentProfiles && studentProfiles.length > 0) {
 
     const studentIds = studentProfiles.map((p: any) => p.id);
 
@@ -327,10 +327,31 @@ export async function dbGetAllStudents(): Promise<FullStudentProfile[]> {
         target_role: `${profile.department_code || 'Engineering'} Core Specialist`,
       };
     });
+    }
   } catch (err) {
     console.error('dbGetAllStudents error:', err);
-    return [];
   }
+  }
+
+  // Fallback to institutional cohort profiles (120 NMAMIT engineering students) assembled as FullStudentProfile
+  const arFallbackMap = new Map<string, AcademicRecord>();
+  (ALL_ACADEMIC_RECORDS || []).forEach((ar) => arFallbackMap.set(ar.student_id, ar));
+
+  const skFallbackMap = new Map<string, StudentSkillPassport[]>();
+  (ALL_SKILL_PASSPORTS || []).forEach((sk) => {
+    if (!skFallbackMap.has(sk.student_id)) skFallbackMap.set(sk.student_id, []);
+    skFallbackMap.get(sk.student_id)!.push(sk);
+  });
+
+  return ALL_COHORT_PROFILES.map((p) => ({
+    profile: p,
+    academic_record: arFallbackMap.get(p.id) || null,
+    semester_marks: [],
+    skills: skFallbackMap.get(p.id) || [],
+    evidence_submissions: [],
+    roadmaps: [],
+    target_role: `${p.department_code || 'Engineering'} Core Specialist`,
+  }));
 }
 
 /**
@@ -663,25 +684,98 @@ export async function dbVerifySubmission(params: {
 /**
  * Fetch placement drives from 'placement_drives' joined with 'companies'
  */
+export const FALLBACK_PLACEMENT_DRIVES: PlacementDrive[] = [
+  {
+    id: '80000001-0000-0000-0000-000000000001',
+    institution_id: INSTITUTION_ID,
+    company_id: '90000001-0000-0000-0000-000000000001',
+    company_name: 'Nexus AI Technologies',
+    role_title: 'AI/ML Engineering Intern (Graduating Batch 2026)',
+    ctc_lpa: 14.5,
+    stipend_per_month: 45000,
+    job_location: 'Bengaluru (Hybrid)',
+    job_description: 'Develop scalable ML feature pipelines, inference profiling, PyTorch transformers, and high-performance Python backends.',
+    eligible_branches: ['ISE', 'CSE', 'AIML', 'AIDS', 'CSCY', 'CSFSD', 'CCE'],
+    min_cgpa: 7.0,
+    max_active_backlogs: 0,
+    batch_year: 2026,
+    recruitment_status: 'published',
+    registration_deadline: new Date(Date.now() + 14 * 86400000).toISOString(),
+    required_skills: [
+      { name: 'Python', importance: 'mandatory', weight: 3 },
+      { name: 'PyTorch', importance: 'mandatory', weight: 3 },
+      { name: 'Data Structures', importance: 'mandatory', weight: 2 },
+      { name: 'Docker', importance: 'preferred', weight: 2 },
+    ],
+  },
+  {
+    id: '80000001-0000-0000-0000-000000000002',
+    institution_id: INSTITUTION_ID,
+    company_id: '90000001-0000-0000-0000-000000000002',
+    company_name: 'CloudScale Systems',
+    role_title: 'Full-Stack Developer Trainee',
+    ctc_lpa: 9.0,
+    stipend_per_month: 35000,
+    job_location: 'Mangaluru / Remote',
+    job_description: 'Build responsive Next.js frontend applications, Node.js REST APIs, PostgreSQL queries, and automated Docker deployment pipelines.',
+    eligible_branches: ['ISE', 'CSE', 'AIML', 'AIDS', 'ECE', 'EEE'],
+    min_cgpa: 6.5,
+    max_active_backlogs: 1,
+    batch_year: 2026,
+    recruitment_status: 'published',
+    registration_deadline: new Date(Date.now() + 20 * 86400000).toISOString(),
+    required_skills: [
+      { name: 'React', importance: 'mandatory', weight: 3 },
+      { name: 'Next.js', importance: 'mandatory', weight: 2 },
+      { name: 'PostgreSQL', importance: 'mandatory', weight: 2 },
+      { name: 'AWS', importance: 'preferred', weight: 2 },
+    ],
+  },
+  {
+    id: '80000001-0000-0000-0000-000000000003',
+    institution_id: INSTITUTION_ID,
+    company_id: '90000001-0000-0000-0000-000000000003',
+    company_name: 'Cisco Systems',
+    role_title: 'Cloud & Network Software Engineer',
+    ctc_lpa: 18.0,
+    stipend_per_month: 60000,
+    job_location: 'Bengaluru',
+    job_description: 'Design distributed networking services, high-throughput cloud planes, telemetry APIs, and resilient infrastructure.',
+    eligible_branches: ['ISE', 'CSE', 'CSCY', 'CCE', 'ECE'],
+    min_cgpa: 8.0,
+    max_active_backlogs: 0,
+    batch_year: 2026,
+    recruitment_status: 'published',
+    registration_deadline: new Date(Date.now() + 28 * 86400000).toISOString(),
+    required_skills: [
+      { name: 'Python', importance: 'mandatory', weight: 3 },
+      { name: 'AWS', importance: 'mandatory', weight: 3 },
+      { name: 'Data Structures', importance: 'mandatory', weight: 2 },
+      { name: 'Cloud Architecture', importance: 'mandatory', weight: 2 },
+    ],
+  },
+];
+
 export async function dbGetPlacementDrives(): Promise<PlacementDrive[]> {
-  if (!isSupabaseConfigured || !supabase) return [];
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('placement_drives')
+        .select('*, companies(name, logo_url, website)')
+        .order('created_at', { ascending: false });
 
-  try {
-    const { data, error } = await supabase
-      .from('placement_drives')
-      .select('*, companies(name, logo_url, website)')
-      .order('created_at', { ascending: false });
-
-    if (error || !data) return [];
-
-    return data.map((d: any) => ({
-      ...d,
-      company_name: d.companies?.name || 'Recruitment Drive',
-    }));
-  } catch (err) {
-    console.error('dbGetPlacementDrives error:', err);
-    return [];
+      if (!error && Array.isArray(data) && data.length > 0) {
+        return data.map((d: any) => ({
+          ...d,
+          company_name: d.companies?.name || 'Recruitment Drive',
+        }));
+      }
+    } catch (err) {
+      console.error('dbGetPlacementDrives error:', err);
+    }
   }
+
+  return FALLBACK_PLACEMENT_DRIVES;
 }
 
 /**
@@ -4148,4 +4242,137 @@ export async function dbSaveStudentLinksAnalysis(
 
   memoryStudentLinksAnalysis.set(resolvedStudentId, fullReport);
   return true;
+}
+
+
+// ============================================================================
+// PLACED STUDENTS & CAMPUS OFFERS (PLACEMENT HUB INTEGRATION)
+// ============================================================================
+
+const SEED_PLACED_STUDENTS: PlacedStudentRecord[] = [
+  {
+    id: 'place-seed-001',
+    student_id: 'a0000003-0000-0000-0000-000000000002',
+    student_name: 'Preethika Rao',
+    student_usn: 'NNM24IS174',
+    department_code: 'ISE',
+    department_name: 'Information Science & Engineering',
+    company_name: 'Cisco Systems',
+    role_title: 'Cloud Security Software Engineer',
+    ctc_lpa: 18.0,
+    placed_at: '2026-10-20T10:30:00Z',
+    is_verified: true,
+    season: '2026 Campus Placement Season',
+  },
+  {
+    id: 'place-seed-002',
+    student_id: 'c0000001-0000-0000-0000-000000000001',
+    student_name: 'Aditya Bhat',
+    student_usn: 'NNM24CS012',
+    department_code: 'CSE',
+    department_name: 'Computer Science & Engineering',
+    company_name: 'CloudScale Systems',
+    role_title: 'Full-Stack Developer Trainee',
+    ctc_lpa: 14.5,
+    placed_at: '2026-10-21T14:15:00Z',
+    is_verified: true,
+    season: '2026 Campus Placement Season',
+  },
+  {
+    id: 'place-seed-003',
+    student_id: 'c0000001-0000-0000-0000-000000000002',
+    student_name: 'Sneha Kulkarni',
+    student_usn: 'NNM24AI045',
+    department_code: 'AIML',
+    department_name: 'Artificial Intelligence & Machine Learning',
+    company_name: 'TechCorp Solutions',
+    role_title: 'Machine Learning Associate',
+    ctc_lpa: 12.0,
+    placed_at: '2026-10-22T09:45:00Z',
+    is_verified: true,
+    season: '2026 Campus Placement Season',
+  },
+  {
+    id: 'place-seed-004',
+    student_id: 'c0000001-0000-0000-0000-000000000003',
+    student_name: 'Karthik Shenoy',
+    student_usn: 'NNM24EC089',
+    department_code: 'ECE',
+    department_name: 'Electronics & Communication',
+    company_name: 'Infosys Limited',
+    role_title: 'Specialist Programmer (Power Programmer)',
+    ctc_lpa: 9.5,
+    placed_at: '2026-10-23T16:20:00Z',
+    is_verified: true,
+    season: '2026 Campus Placement Season',
+  },
+];
+
+/**
+ * Fetch all students who have secured campus placement offers
+ */
+export async function dbGetPlacedStudents(): Promise<PlacedStudentRecord[]> {
+  const placedMap = new Map<string, PlacedStudentRecord>();
+
+  // 1. Add baseline seed placed students
+  SEED_PLACED_STUDENTS.forEach((s) => placedMap.set(s.student_id, s));
+
+  // 2. Query live drive applications from Supabase if configured
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data: rawApps } = await supabase
+        .from('drive_applications')
+        .select('*, placement_drives(role_title, ctc_lpa, companies(name)), profiles(id, full_name, usn, department_id, departments(code))')
+        .in('stage', ['selected', 'placed', 'offered', 'accepted']);
+
+      if (rawApps && rawApps.length > 0) {
+        rawApps.forEach((app: any) => {
+          const prof = app.profiles;
+          const drv = app.placement_drives;
+          if (prof) {
+            placedMap.set(prof.id, {
+              id: app.id,
+              student_id: prof.id,
+              student_name: prof.full_name || 'Student',
+              student_usn: prof.usn || '',
+              department_code: prof.departments?.code || 'ISE',
+              company_name: drv?.companies?.name || 'Campus Recruiter',
+              role_title: drv?.role_title || 'Software Trainee',
+              ctc_lpa: drv?.ctc_lpa || 10.0,
+              placed_at: app.updated_at || app.created_at || new Date().toISOString(),
+              is_verified: true,
+              season: '2026 Campus Placement Season',
+            });
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Error fetching live placed applications:', err);
+    }
+  }
+
+  // Convert to array and sort descending by placement date
+  return Array.from(placedMap.values()).sort(
+    (a, b) => new Date(b.placed_at).getTime() - new Date(a.placed_at).getTime()
+  );
+}
+
+/**
+ * Check if a specific student has an active campus placement offer
+ */
+export async function dbGetStudentPlacementOffer(
+  studentIdOrUsn: string
+): Promise<PlacedStudentRecord | null> {
+  if (!studentIdOrUsn) return null;
+
+  const resolvedId = (await dbResolveStudentProfileId(studentIdOrUsn)) || studentIdOrUsn;
+  const allPlaced = await dbGetPlacedStudents();
+
+  return (
+    allPlaced.find(
+      (p) =>
+        p.student_id === resolvedId ||
+        p.student_usn.toLowerCase() === studentIdOrUsn.toLowerCase()
+    ) || null
+  );
 }

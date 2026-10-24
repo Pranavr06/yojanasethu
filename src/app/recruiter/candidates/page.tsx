@@ -6,11 +6,13 @@ import Link from 'next/link';
 import CandidateCard from '@/components/CandidateCard';
 import CandidateComparisonModal from '@/components/recruiter/CandidateComparisonModal';
 import StudentProfileModal from '@/components/recruiter/StudentProfileModal';
+import GeminiDriveSkillGapModal from '@/components/GeminiDriveSkillGapModal';
 
 import { PlacementDrive, CandidateEvaluation, FullStudentProfile } from '@/types';
 import {
   Briefcase,
   CheckCircle2,
+  Bot,
   XCircle,
   Users,
   RefreshCw,
@@ -102,6 +104,7 @@ function CandidatesContent() {
   const [profileModalStudent, setProfileModalStudent] = useState<FullStudentProfile | null>(null);
 
   // Modal/Drawer for editing recruiter note & interview feedback
+  const [isGeminiModalOpen, setIsGeminiModalOpen] = useState(false);
   const [editingAppNote, setEditingAppNote] = useState<{
     id: string;
     studentName: string;
@@ -717,6 +720,15 @@ function CandidatesContent() {
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
+          </button>
+
+          <button
+            onClick={() => setIsGeminiModalOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-md transition-all"
+            title="Analyze eligible candidates and lacking skill sets with Gemini AI"
+          >
+            <Bot className="w-3.5 h-3.5 text-amber-300" />
+            <span>Gemini AI Skill Audit</span>
           </button>
 
           <button
@@ -1406,6 +1418,15 @@ function CandidatesContent() {
           onOpenNotes={handleOpenNotesForStudent}
           isSelectedForCompare={selectedCandidateIds.has(profileModalStudent.profile.id)}
           onToggleCompare={handleToggleSelectCandidate}
+        />
+      )}
+
+      {/* Gemini AI Recruiter Skill Gap Modal */}
+      {selectedDriveId && (
+        <GeminiDriveSkillGapModal
+          isOpen={isGeminiModalOpen}
+          onClose={() => setIsGeminiModalOpen(false)}
+          driveId={selectedDriveId}
         />
       )}
 
