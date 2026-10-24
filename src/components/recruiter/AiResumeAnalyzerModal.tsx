@@ -17,7 +17,6 @@ import {
   Briefcase,
   Layers,
   ArrowRight,
-  Info,
   Maximize2,
   Minimize2,
 } from 'lucide-react';
@@ -237,27 +236,6 @@ export default function AiResumeAnalyzerModal({
               activeTab === 'resume' ? 'hidden lg:flex' : 'flex'
             }`}
           >
-            {/* AI Status / Provider Banner */}
-            {analysis && (
-              <div
-                className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
-                  analysis.ai_status === 'gemini_live'
-                    ? 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-500/30 text-purple-900 dark:text-purple-200'
-                    : 'bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-500/30 text-amber-900 dark:text-amber-200'
-                }`}
-              >
-                <Info className="w-4 h-4 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold block">
-                    {analysis.ai_status === 'gemini_live'
-                      ? '⚡ Live Gemini Intelligence Engine'
-                      : 'ℹ️ Deterministic ERP & Proof Parser (Gemini Key Unconfigured)'}
-                  </span>
-                  <p className="text-[11px] mt-0.5 opacity-90">{analysis.provider_note}</p>
-                </div>
-              </div>
-            )}
-
             {loading ? (
               <div className="py-24 text-center space-y-3">
                 <Loader2 className="w-8 h-8 animate-spin mx-auto text-purple-600" />
