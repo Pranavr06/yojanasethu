@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/authContext';
 import {
   ShieldAlert,
@@ -19,6 +20,7 @@ import {
   Loader2,
   RefreshCw,
   Lock,
+  ExternalLink,
 } from 'lucide-react';
 import { getRoleLabel } from '@/lib/rbac';
 
@@ -132,6 +134,24 @@ export default function AdminDashboardPage() {
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             YojanaSethu Role Approvals, Privileged Access Gates, & Campus Directory
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/student/placement-hub"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 transition-all hover:scale-105"
+            title="Open Campus Placement Transparency Hub View"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Hub View</span>
+          </Link>
+
+          <Link
+            href="/placements/dashboard"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold shadow-sm transition-colors"
+          >
+            <Briefcase className="w-3.5 h-3.5" />
+            <span>Placement Desk</span>
+          </Link>
         </div>
       </div>
         {/* Top Metric Cards */}

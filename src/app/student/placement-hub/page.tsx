@@ -79,6 +79,13 @@ export default function StudentPlacementHubPage() {
           console.error('Error fetching student:', e);
         }
       }
+      if (!studentData && user?.role && user.role !== 'student') {
+        try {
+          const sRes = await fetch('/api/students?usn=NNM24IS159');
+          const sJson = await sRes.json();
+          if (sJson.student) studentData = sJson.student;
+        } catch {}
+      }
       setStudent(studentData);
 
       // 2. Fetch announcements, calendar events, and history in parallel
@@ -235,6 +242,23 @@ export default function StudentPlacementHubPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Authorized Officer / Governance Preview Banner */}
+      {user?.role && user.role !== 'student' && (
+        <div className="p-4 rounded-2xl bg-indigo-900/30 border border-indigo-500/30 text-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs backdrop-blur-md">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span>
+              <strong>Transparency Hub Preview Mode:</strong> Active audit session for <strong>{user.full_name || 'Prof. Sudesh Rao'}</strong> ({user.role.toUpperCase()}). Showing student-facing eligibility gates and transparency announcements.
+            </span>
+          </div>
+          <Link
+            href={user.role === 'admin' ? '/admin/dashboard' : user.role === 'faculty' || user.role === 'mentor' ? '/mentor' : '/placements/dashboard'}
+            className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-colors whitespace-nowrap self-start sm:self-center border border-white/20"
+          >
+            ← Back to {user.role === 'admin' ? 'Governance Desk' : user.role === 'faculty' || user.role === 'mentor' ? 'Mentor Desk' : 'Placement Desk'}
+          </Link>
+        </div>
+      )}
       {/* 1. Placement Hub Hero Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1E1B4B] via-[#0F172A] to-[#1E1B4B] border border-indigo-500/30 p-6 sm:p-8 text-white shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">

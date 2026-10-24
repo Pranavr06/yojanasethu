@@ -98,6 +98,7 @@ export interface Profile {
   company_name?: string | null;
   recruiter_title?: string | null;
   target_career_role?: string | null;
+  mentor_id?: string | null;
   learning_goals?: string[] | null;
   career_interests?: string[] | null;
   resume_storage_path?: string | null;
@@ -304,6 +305,47 @@ export interface Roadmap {
 }
 
 // Full view model for Student Dashboard
+export interface AssignedMentorInfo {
+  id: string;
+  full_name: string;
+  email: string;
+  department_code?: string;
+  department_name?: string;
+  designation?: string;
+}
+
+export interface MentorAssignmentRecord {
+  id: string;
+  mentor_id: string;
+  student_id: string;
+  assigned_by?: string | null;
+  assigned_at: string;
+  notes?: string | null;
+  mentor?: AssignedMentorInfo;
+}
+
+export interface MentorWithMenteesSummary {
+  id: string;
+  full_name: string;
+  email: string;
+  department_code?: string;
+  department_name?: string;
+  designation?: string;
+  mentee_count: number;
+  max_capacity: number; // strictly 12
+  is_full: boolean;
+  mentees: Array<{
+    id: string;
+    full_name: string;
+    usn: string;
+    email: string;
+    department_code?: string;
+    semester?: number;
+    cgpa?: number;
+    active_backlogs?: number;
+  }>;
+}
+
 export interface FullStudentProfile {
   profile: Profile;
   academic_record: AcademicRecord | null;
@@ -312,6 +354,7 @@ export interface FullStudentProfile {
   evidence_submissions: EvidenceSubmission[];
   roadmaps: Roadmap[];
   target_role: string;
+  mentor?: AssignedMentorInfo | null;
 }
 
 // Recruiter Candidate Evaluation Result

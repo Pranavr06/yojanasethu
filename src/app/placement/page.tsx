@@ -6,6 +6,7 @@ import PlacementCharts from '@/components/PlacementCharts';
 import EligibleStudentModal from '@/components/EligibleStudentModal';
 import AnnouncementFormModal from '@/components/AnnouncementFormModal';
 import AddRecruiterModal from '@/components/AddRecruiterModal';
+import AssignMentorModal from '@/components/AssignMentorModal';
 import { RecruiterProfile } from '@/types';
 import Link from 'next/link';
 import {
@@ -54,6 +55,7 @@ export default function PlacementDashboardPage() {
   const [auditDrive, setAuditDrive] = useState<PlacementDrive | null>(null);
   const [isAnnouncementModalOpen, setIsAnnouncementModalOpen] = useState(false);
   const [isAddRecruiterModalOpen, setIsAddRecruiterModalOpen] = useState(false);
+  const [isAssignMentorModalOpen, setIsAssignMentorModalOpen] = useState(false);
   const [recruiters, setRecruiters] = useState<RecruiterProfile[]>([]);
   const [placementTab, setPlacementTab] = useState<'drives' | 'recruiters'>('drives');
   const [recruiterSearch, setRecruiterSearch] = useState('');

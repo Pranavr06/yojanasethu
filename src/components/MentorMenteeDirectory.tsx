@@ -114,8 +114,12 @@ export default function MentorMenteeDirectory({
               <h3 className="text-sm md:text-base font-bold text-slate-900 dark:text-white">
                 Mentee Student Academic & Verification Roster
               </h3>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30">
-                {sorted.length} Students
+              <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${
+                sorted.length >= 12
+                  ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-500/30'
+                  : 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30'
+              }`}>
+                {sorted.length} / 12 Mentees Assigned{sorted.length >= 12 ? ' (Capacity Full)' : ''}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -234,8 +238,16 @@ export default function MentorMenteeDirectory({
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-medium">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-slate-400">
-                  No students match the criteria.
+                <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <div className="flex flex-col items-center justify-center gap-1.5">
+                    <Users className="w-8 h-8 text-blue-500 opacity-40 mb-1" />
+                    <p className="font-bold text-slate-700 dark:text-slate-300">
+                      No Mentees Currently Assigned to Your Cohort
+                    </p>
+                    <p className="text-xs text-slate-500 max-w-md">
+                      The Placement Department assigns up to 12 mentees per faculty mentor. Once assigned, your mentees will appear here with complete academic & verification standings.
+                    </p>
+                  </div>
                 </td>
               </tr>
             ) : (
