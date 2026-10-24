@@ -8,6 +8,14 @@ import {
   FullEvaluationResult,
 } from '@/app/api/interview/evaluate/route';
 
+export interface StarModelAnswer {
+  question: string;
+  situation: string;
+  task: string;
+  action: string;
+  result: string;
+}
+
 export interface FinalInterviewReport {
   overallScore: number;
   readinessVerdict: 'Placement Ready' | 'Near Ready (1-2 Weeks Revision)' | 'Needs Structured Foundation';
@@ -19,8 +27,20 @@ export interface FinalInterviewReport {
     architecturalThinking: number;
     deliveryAndConfidence: number;
   };
+  categoryBreakdown?: {
+    introductoryHrScore: number;
+    technicalRoleScore: number;
+    problemSolvingScore: number;
+  };
+  acousticSummary?: {
+    avgWpm: number;
+    totalPauses: number;
+    totalFillers: number;
+    pitchModulation: string;
+  };
   keyStrengths: string[];
   criticalGaps: string[];
+  starModelAnswers?: StarModelAnswer[];
   sevenDayActionPlan: Array<{ day: number; focus: string; task: string; inAppDestination: string }>;
   aiExecutiveSummary: string;
 }
@@ -30,6 +50,7 @@ export interface QuestionEvaluationItem extends FullEvaluationResult {
   question: string;
   userAnswer: string;
   difficulty?: string;
+  category?: string;
 }
 
 /**
@@ -205,7 +226,7 @@ export async function retrieveStudentContextNode(
 }
 
 // ==========================================
-// NODE 2: Generate Contextual Question
+// NODE 2: Generate Contextual Question (Multi-Phase)
 // ==========================================
 export async function generateQuestionNode(
   state: InterviewWorkflowState
@@ -217,46 +238,139 @@ export async function generateQuestionNode(
 
   const trackKey = (state.track || 'fullstack') as keyof typeof TRACK_QUESTIONS;
   const trackInfo = TRACK_QUESTIONS[trackKey] || TRACK_QUESTIONS.fullstack;
+  const candidateName = state.studentContext?.fullName || 'Candidate';
   const candidateSkills = (state.studentContext?.skills || []).slice(0, 8).join(', ');
   const candidateProjects = (state.studentContext?.projects || [])
     .map((p) => `${p.title}: ${p.description}`)
     .join('; ');
+  const previousAnswer = state.currentAnswer ? state.currentAnswer.trim() : '';
 
-  const prompt = `You are a Principal Engineering Interviewer conducting a campus placement technical interview for the role of ${state.role}.
-Track: ${trackInfo.title} (${trackInfo.desc})
-Difficulty Target: ${state.difficulty}
-Question Number: ${state.questionIndex + 1} of ${state.maxQuestions}
+  let prompt = '';
+  let defaultFallback: QuestionTemplate;
 
-Candidate Context:
-- Verified Skills: ${candidateSkills || 'Full-Stack Web Development, Data Structures, System Design'}
-- Portfolio Projects: ${candidateProjects || 'Campus Placement System, Distributed Cache, Real-time Chat'}
-- Previously Asked Questions in this session:
-${state.questionHistory.map((q, idx) => `  ${idx + 1}. ${q.question}`).join('\n') || '  (First question)'}
+  if (state.questionIndex === 0) {
+    // -------------------------------------------------------------
+    // PHASE 1: Natural Warm-Up & Introductory HR Opening Greeting
+    // -------------------------------------------------------------
+    prompt = `You are a Principal Engineering Interviewer and Talent Lead conducting a campus placement interview for the role of ${state.role} (${trackInfo.title}).
+This is Question 1 of ${state.maxQuestions} (The Opening Introduction).
+Candidate Name: ${candidateName}
+Verified Academic Skills: ${candidateSkills || 'Full-Stack Development, Computer Science Fundamentals'}
 
-Generate a challenging, highly realistic technical or architecture interview question relevant to this role and track.
-Include:
-1. "question": The exact question to ask the candidate aloud.
-2. "category": One of "technical", "architecture", "problem_solving", "behavioral".
-3. "hint": A concise guiding hint if the candidate struggles.
-4. "sampleDemoAnswer": An exemplary, senior-level response explaining core mechanics and trade-offs.
-5. "keyPoints": An array of 4-5 technical concepts or keywords the candidate must cover for full marks.`;
+Generate a warm, professional, and conversational opening question.
+Requirements:
+1. Warmly greet the candidate (e.g. "Hello! Welcome to your mock interview for the ${state.role} position.").
+2. Ask them to introduce themselves, share why they chose their engineering branch, and highlight what technical areas or engineering challenges excite them most.
+3. Keep the tone encouraging, authentic, and natural for a senior interviewer.
 
-  const fallbackQuestions = trackInfo.questions || [];
-  const fallbackIndex = state.questionIndex % fallbackQuestions.length;
-  const defaultFallback = fallbackQuestions[fallbackIndex] || {
-    id: `q-${Date.now()}`,
-    question: 'Explain how you approach optimizing database query latency in high-concurrency systems.',
-    category: 'technical' as const,
-    hint: 'Mention indexing, query plans, connection pools, and caching layers.',
-    sampleDemoAnswer:
-      'I start with EXPLAIN ANALYZE to identify sequential scans and missing indexes. I ensure connection pooling via PgBouncer and introduce Redis caching for hot read paths.',
-    keyPoints: ['EXPLAIN ANALYZE', 'B-tree vs Hash indexes', 'Connection pooling', 'Read caching trade-offs'],
-  };
+Produce JSON matching:
+- "question": The exact spoken opening question.
+- "category": "behavioral"
+- "hint": A supportive guidance tip for how to structure a great 60-90 second technical elevator pitch.
+- "sampleDemoAnswer": An exemplary self-introduction highlighting academic branch, passion for engineering, and target impact.
+- "keyPoints": 4 key aspects to assess (e.g. ['Clear self-introduction and branch', 'Core engineering passion & motivations', 'Communication articulateness and pacing', 'Alignment with target engineering role']).`;
+
+    defaultFallback = {
+      id: `gen-intro-${Date.now()}`,
+      question: `Hello! Welcome to your mock interview for the ${state.role} position. Let's begin with a brief introduction. Could you tell me your name, your engineering background, and what areas of technology interest you most?`,
+      category: 'behavioral',
+      hint: 'Share your background, branch of study, technical areas you are passionate about, and what drives you as an engineer.',
+      sampleDemoAnswer: `Hello! My name is ${candidateName !== 'Candidate' ? candidateName : 'Alex'}, and I am a final-year engineering student majoring in Computer Science. Over my academic journey, I discovered a strong interest in building reliable full-stack applications and distributed backend architectures. I enjoy taking complex algorithmic problems and turning them into efficient software systems, and I am excited about contributing to high-impact production engineering teams.`,
+      keyPoints: [
+        'Clear self-introduction and branch',
+        'Core engineering passion and motivations',
+        'Articulate verbal communication and pacing',
+        'Alignment with target engineering role',
+      ],
+    };
+  } else if (state.questionIndex === 1) {
+    // -------------------------------------------------------------
+    // PHASE 2: Practical Project & STAR Problem Solving Deep-Dive
+    // -------------------------------------------------------------
+    prompt = `You are a Principal Engineering Interviewer conducting a campus placement technical interview for ${state.role}.
+This is Question 2 of ${state.maxQuestions} (Project & Practical Problem Solving).
+Candidate: ${candidateName}
+Portfolio Projects: ${candidateProjects || 'Campus Placement Management System, Real-Time Distributed Queue, Web Application'}
+Skills: ${candidateSkills || 'React, Node.js, TypeScript, PostgreSQL, System Design'}
+Previous Response / Intro from Candidate:
+"""
+${previousAnswer || 'Candidate introduced their background and passion for software engineering.'}
+"""
+
+Generate a natural follow-up question diving into a practical project they have engineered.
+Requirements:
+1. Conversationally acknowledge their introduction (e.g., "Thank you for that introduction!" or referencing what they shared).
+2. Ask them to walk you through a technical project from their portfolio or experience, focusing on:
+   - What architectural problem it solved
+   - A critical technical roadblock or performance bottleneck they ran into
+   - How they resolved it and what measurable outcome was achieved (STAR approach).
+3. The question must feel like a natural conversation bridge, not an isolated textbook prompt.
+
+Produce JSON with:
+- "question": Spoken follow-up question.
+- "category": "problem_solving"
+- "hint": Guidance on using the STAR method (Situation, Task, Action, Result).
+- "sampleDemoAnswer": Concrete, exemplary project explanation with numbers and architecture trade-offs.
+- "keyPoints": 4 key criteria to assess.`;
+
+    defaultFallback = {
+      id: `gen-project-${Date.now()}`,
+      question: `Thank you for sharing your background! Let's dive into your practical engineering experience. Could you walk me through a technical project you built that you are most proud of? What architectural problem were you solving, what major technical roadblock did you encounter, and how did you resolve it?`,
+      category: 'problem_solving',
+      hint: 'Structure your response using the STAR method: Situation, Task, Action, and Measurable Result.',
+      sampleDemoAnswer: `In my campus placement portal project, I designed the backend to support concurrent test submissions for over 500 simultaneous users. During load testing, synchronous database writes caused connection pool exhaustion and spikes in request latency. I resolved this by introducing an asynchronous Redis queue with worker pools to batch database insertions, reducing median API response times from 1.6 seconds to under 75 milliseconds while guaranteeing zero data loss.`,
+      keyPoints: [
+        'Clear problem statement and project context',
+        'Architectural decisions and tech stack rationale',
+        'Specific technical roadblock or bottleneck overcome',
+        'Measurable result or engineering trade-off demonstrated',
+      ],
+    };
+  } else {
+    // -------------------------------------------------------------
+    // PHASE 3+: Core Technical Depth, Architecture & Concurrency Trade-Offs
+    // -------------------------------------------------------------
+    const fallbackQuestions = trackInfo.questions || [];
+    const fallbackIndex = state.questionIndex % fallbackQuestions.length;
+    defaultFallback = fallbackQuestions[fallbackIndex] || {
+      id: `gen-tech-${Date.now()}`,
+      question: 'Explain how you approach optimizing database query latency in high-concurrency systems.',
+      category: 'technical',
+      hint: 'Mention indexing, query plans, connection pools, and caching layers.',
+      sampleDemoAnswer:
+        'I start with EXPLAIN ANALYZE to identify sequential scans and missing indexes. I ensure connection pooling via PgBouncer and introduce Redis caching for hot read paths.',
+      keyPoints: ['EXPLAIN ANALYZE', 'B-tree vs Hash indexes', 'Connection pooling', 'Read caching trade-offs'],
+    };
+
+    prompt = `You are a Principal Engineering Interviewer conducting a campus placement technical interview for ${state.role} in track "${trackInfo.title}".
+This is Question ${state.questionIndex + 1} of ${state.maxQuestions} (Core Technical Depth & Architecture).
+Difficulty: ${state.difficulty}
+Candidate Skills: ${candidateSkills || 'Data Structures, REST APIs, Databases, Concurrency'}
+Previous Response from Candidate:
+"""
+${previousAnswer ? previousAnswer.slice(0, 600) : 'Technical discussion in progress.'}
+"""
+Previously Asked Questions:
+${state.questionHistory.map((q, idx) => `  ${idx + 1}. ${q.question}`).join('\n') || '  (Prior questions recorded)'}
+
+Generate a challenging, highly realistic technical or architecture question.
+Requirements:
+1. Bridge naturally from their previous response if appropriate.
+2. Focus on core mechanics, concurrency, performance trade-offs, or system edge cases matching difficulty "${state.difficulty}".
+3. Formulate the question in direct spoken interviewer dialogue.
+
+Produce JSON with:
+- "question": Spoken technical question.
+- "category": "technical" or "architecture"
+- "hint": Guiding hint.
+- "sampleDemoAnswer": Exemplary senior answer explaining mechanics and trade-offs.
+- "keyPoints": 4 core technical points to assess.`;
+  }
 
   const response = await invokeGeminiStructured<any>({
     prompt,
     config: {
-      temperature: 0.3,
+      temperature: 0.35,
       systemInstruction:
         'You are an expert technical interviewer for Tier 1 tech companies. Produce precise JSON matching the schema.',
     },
@@ -281,7 +395,7 @@ Include:
   const formattedQuestion: QuestionTemplate = {
     id: `gen-${Date.now()}-${state.questionIndex}`,
     question: generated.question || defaultFallback.question,
-    category: (generated.category as any) || 'technical',
+    category: (generated.category as any) || defaultFallback.category || 'technical',
     hint: generated.hint || defaultFallback.hint,
     sampleDemoAnswer: generated.sampleDemoAnswer || defaultFallback.sampleDemoAnswer,
     keyPoints: Array.isArray(generated.keyPoints) && generated.keyPoints.length > 0
@@ -315,6 +429,7 @@ export async function evaluateAnswerNode(
 Target Role: ${state.role}
 Track: ${state.track}
 Interview Question: ${currentQ.question}
+Question Category: ${currentQ.category}
 Expected Key Points to Assess:
 ${currentQ.keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
@@ -463,6 +578,7 @@ CRITICAL INSTRUCTIONS:
     question: currentQ.question,
     userAnswer: answer,
     difficulty: state.difficulty,
+    category: currentQ.category,
     score: raw.overallScore ?? raw.score ?? fallbackResult.score,
     technical: raw.technicalScore ?? raw.rubric?.technical ?? fallbackResult.technical,
     communication: raw.communicationScore ?? raw.rubric?.communication ?? fallbackResult.communication,
@@ -555,8 +671,14 @@ export async function finalReportGeneratorNode(
           architecturalThinking: 0,
           deliveryAndConfidence: 0,
         },
+        categoryBreakdown: {
+          introductoryHrScore: 0,
+          technicalRoleScore: 0,
+          problemSolvingScore: 0,
+        },
         keyStrengths: [],
         criticalGaps: ['Complete full interview session to obtain performance analysis.'],
+        starModelAnswers: [],
         sevenDayActionPlan: [],
         aiExecutiveSummary: 'No interview answers recorded.',
       },
@@ -567,12 +689,21 @@ export async function finalReportGeneratorNode(
   const avg = (fn: (e: QuestionEvaluationItem) => number) =>
     Math.round(evals.reduce((acc, e) => acc + (fn(e) || 0), 0) / evals.length);
 
-  const overallScore = avg((e) => e.score);
   const technicalAccuracy = avg((e) => e.technical);
   const communicationClarity = avg((e) => e.communication);
   const problemSolving = avg((e) => e.problemSolving);
   const architecturalThinking = avg((e) => e.structure);
   const deliveryAndConfidence = avg((e) => e.confidence);
+  const relevanceAvg = avg((e) => e.relevance || 65);
+
+  // Documented Transparent Weighted Scoring:
+  // 40% Technical + 25% Problem Solving + 20% Communication + 15% Relevance
+  const overallScore = Math.round(
+    0.4 * technicalAccuracy +
+    0.25 * problemSolving +
+    0.2 * communicationClarity +
+    0.15 * relevanceAvg
+  );
 
   let readinessVerdict: 'Placement Ready' | 'Near Ready (1-2 Weeks Revision)' | 'Needs Structured Foundation';
   let hiringRecommendation: 'Strong Hire' | 'Hire' | 'Borderline / Needs Practice' | 'Do Not Hire Yet';
@@ -588,9 +719,59 @@ export async function finalReportGeneratorNode(
     hiringRecommendation = 'Do Not Hire Yet';
   }
 
+  // Category breakdown: Introductory HR vs Technical vs Problem Solving
+  const introEvals = evals.filter(
+    (e) => e.category === 'behavioral' || e.questionId.includes('intro') || e.question.toLowerCase().includes('introduction')
+  );
+  const techEvals = evals.filter(
+    (e) => e.category === 'technical' || e.category === 'architecture'
+  );
+  const psEvals = evals.filter(
+    (e) => e.category === 'problem_solving' || e.questionId.includes('project')
+  );
+
+  const introductoryHrScore =
+    introEvals.length > 0
+      ? Math.round(introEvals.reduce((a, e) => a + e.communication, 0) / introEvals.length)
+      : communicationClarity;
+
+  const technicalRoleScore =
+    techEvals.length > 0
+      ? Math.round(techEvals.reduce((a, e) => a + e.technical, 0) / techEvals.length)
+      : technicalAccuracy;
+
+  const problemSolvingScore =
+    psEvals.length > 0
+      ? Math.round(psEvals.reduce((a, e) => a + e.problemSolving, 0) / psEvals.length)
+      : problemSolving;
+
+  // Acoustic summary across answers
+  const wpmList: number[] = [];
+  let totalPauses = 0;
+  let totalFillers = 0;
+  evals.forEach((e) => {
+    if (e.voiceAnalysis?.speakingRate?.wpm) wpmList.push(e.voiceAnalysis.speakingRate.wpm);
+    if (e.voiceAnalysis?.pausesAndHesitation?.pauseCount) totalPauses += e.voiceAnalysis.pausesAndHesitation.pauseCount;
+    if (e.voiceAnalysis?.fillerWords?.count) totalFillers += e.voiceAnalysis.fillerWords.count;
+  });
+
+  const avgWpm = wpmList.length > 0 ? Math.round(wpmList.reduce((a, b) => a + b, 0) / wpmList.length) : 135;
+
   // Collect strengths and gaps
   const allStrengths = Array.from(new Set(evals.flatMap((e) => e.strengths || []))).slice(0, 4);
   const allGaps = Array.from(new Set(evals.flatMap((e) => e.improvements || []))).slice(0, 4);
+
+  // STAR Model Answers for evaluated questions
+  const starModelAnswers: StarModelAnswer[] = evals.map((e, idx) => {
+    const keyAspects = (e.keyPointsCovered?.concat(e.keyPointsMissed || []) || []).slice(0, 3).join(', ');
+    return {
+      question: e.question,
+      situation: `Technical assessment for ${state.role} regarding ${e.question.slice(0, 70)}...`,
+      task: `Articulate core mechanics, address constraints (${keyAspects || 'system design, performance'}), and clarify trade-offs.`,
+      action: e.modelAnswer || e.suggestedAnswer || 'Formulated modular architecture with optimal time and space complexity.',
+      result: 'Delivered robust production reliability, deterministic latency, and clear engineering communication.',
+    };
+  });
 
   // Default 7-day action plan linked to actual routes
   const defaultActionPlan = [
@@ -606,6 +787,7 @@ export async function finalReportGeneratorNode(
   // Synthesize executive summary via Gemini
   const summaryPrompt = `Synthesize a concise, 2-3 sentence executive placement assessment for a candidate who just completed a campus technical interview for ${state.role}.
 Scores: Overall: ${overallScore}/100, Technical: ${technicalAccuracy}, Communication: ${communicationClarity}, Problem Solving: ${problemSolving}.
+Category Breakdown: HR & Intro: ${introductoryHrScore}/100, Technical Mechanisms: ${technicalRoleScore}/100, Problem Solving: ${problemSolvingScore}/100.
 Strengths: ${allStrengths.join(', ')}
 Gaps to remediate: ${allGaps.join(', ')}
 Provide a professional hiring recommendation tone.`;
@@ -627,8 +809,20 @@ Provide a professional hiring recommendation tone.`;
       architecturalThinking,
       deliveryAndConfidence,
     },
+    categoryBreakdown: {
+      introductoryHrScore,
+      technicalRoleScore,
+      problemSolvingScore,
+    },
+    acousticSummary: {
+      avgWpm,
+      totalPauses,
+      totalFillers,
+      pitchModulation: 'Natural dynamic inflection',
+    },
     keyStrengths: allStrengths,
     criticalGaps: allGaps,
+    starModelAnswers,
     sevenDayActionPlan: defaultActionPlan,
     aiExecutiveSummary: summaryRes.text || `The candidate demonstrated strong foundational knowledge with an overall readiness score of ${overallScore}/100. Key strengths include ${allStrengths.slice(0, 2).join(' and ') || 'clear technical communication'}.`,
   };
@@ -741,6 +935,7 @@ export async function executeLangGraphQuestionGeneration(params: {
   maxQuestions?: number;
   difficulty?: 'entry' | 'intermediate' | 'senior';
   questionHistory?: QuestionTemplate[];
+  lastAnswer?: string;
 }): Promise<{
   question: QuestionTemplate;
   state: InterviewWorkflowState;
@@ -753,6 +948,7 @@ export async function executeLangGraphQuestionGeneration(params: {
     maxQuestions: params.maxQuestions ?? 4,
     difficulty: params.difficulty || 'intermediate',
     questionHistory: params.questionHistory || [],
+    currentAnswer: params.lastAnswer || '',
     actionIntent: 'generate_question',
   });
 

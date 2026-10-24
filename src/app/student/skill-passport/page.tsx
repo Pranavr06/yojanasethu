@@ -103,13 +103,6 @@ export default function StudentSkillPassportPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-200 dark:border-slate-800">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <Link
-              href="/student"
-              className="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
-              title="Back to Student Dashboard"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </Link>
             <span className="text-xs font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">
               Evidence-Backed Credentials
             </span>
