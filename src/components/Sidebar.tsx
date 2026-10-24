@@ -424,32 +424,44 @@ export default function Sidebar({
                 RECRUITER PIPELINE
               </span>
               <div className="space-y-1">
-                <a
-                  href="#placement-drives"
+                <Link
+                  href="/recruiter/drives"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname === '/recruiter/drives'
+                      ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
-                  <Briefcase className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                  <Briefcase className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   <span>Placement Drives</span>
-                </a>
+                </Link>
 
-                <a
-                  href="#candidate-rankings"
+                <Link
+                  href="/recruiter/candidates"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname === '/recruiter/candidates'
+                      ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
-                  <Users className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                  <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   <span>Ranked Candidates</span>
-                </a>
+                </Link>
 
-                <a
-                  href="#cutoff-filter"
+                <Link
+                  href="/recruiter/cutoff"
                   onClick={onClose}
-                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                    pathname === '/recruiter/cutoff'
+                      ? 'bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800/50 shadow-sm font-bold'
+                      : 'font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900'
+                  }`}
                 >
-                  <Layers className="w-4 h-4 text-slate-500 dark:text-slate-400" />
+                  <Layers className="w-4 h-4 text-purple-600 dark:text-purple-400" />
                   <span>Contineo Cutoff Filter</span>
-                </a>
+                </Link>
               </div>
             </div>
           )}

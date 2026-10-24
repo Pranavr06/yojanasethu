@@ -98,6 +98,7 @@ export interface Profile {
   company_name?: string | null;
   recruiter_title?: string | null;
   target_career_role?: string | null;
+  mentor_id?: string | null;
   learning_goals?: string[] | null;
   career_interests?: string[] | null;
   resume_storage_path?: string | null;
@@ -304,6 +305,47 @@ export interface Roadmap {
 }
 
 // Full view model for Student Dashboard
+export interface AssignedMentorInfo {
+  id: string;
+  full_name: string;
+  email: string;
+  department_code?: string;
+  department_name?: string;
+  designation?: string;
+}
+
+export interface MentorAssignmentRecord {
+  id: string;
+  mentor_id: string;
+  student_id: string;
+  assigned_by?: string | null;
+  assigned_at: string;
+  notes?: string | null;
+  mentor?: AssignedMentorInfo;
+}
+
+export interface MentorWithMenteesSummary {
+  id: string;
+  full_name: string;
+  email: string;
+  department_code?: string;
+  department_name?: string;
+  designation?: string;
+  mentee_count: number;
+  max_capacity: number; // strictly 12
+  is_full: boolean;
+  mentees: Array<{
+    id: string;
+    full_name: string;
+    usn: string;
+    email: string;
+    department_code?: string;
+    semester?: number;
+    cgpa?: number;
+    active_backlogs?: number;
+  }>;
+}
+
 export interface FullStudentProfile {
   profile: Profile;
   academic_record: AcademicRecord | null;
@@ -312,6 +354,7 @@ export interface FullStudentProfile {
   evidence_submissions: EvidenceSubmission[];
   roadmaps: Roadmap[];
   target_role: string;
+  mentor?: AssignedMentorInfo | null;
 }
 
 // Recruiter Candidate Evaluation Result
@@ -479,6 +522,58 @@ export interface HistoricalPlacementStats {
     average_package_lpa: number;
   }[];
   top_recruiters: HistoricalRecruiterRecord[];
+}
+
+export interface PlacedStudentRecord {
+  id: string;
+  student_id: string;
+  student_name: string;
+  student_usn: string;
+  department_code: string;
+  department_name?: string;
+  company_name: string;
+  role_title: string;
+  ctc_lpa: number;
+  placed_at: string;
+  is_verified: boolean;
+  offer_letter_url?: string | null;
+  season?: string;
+}
+
+export interface CandidateSkillGap {
+  student_id: string;
+  student_name: string;
+  student_usn: string;
+  department_code: string;
+  cgpa: number;
+  match_score: number;
+  lacking_skills: {
+    skill_name: string;
+    importance: 'mandatory' | 'preferred';
+    reason: string;
+  }[];
+  possessed_skills: string[];
+  gemini_recommendation: string;
+}
+
+export interface GeminiDriveSkillGapAnalysis {
+  drive_id: string;
+  company_name: string;
+  role_title: string;
+  ctc_lpa: number;
+  analyzed_at: string;
+  ai_provider: 'gemini' | 'deterministic_fallback';
+  total_candidates_evaluated: number;
+  eligible_candidates_count: number;
+  top_lacking_skills: {
+    skill_name: string;
+    missing_count: number;
+    percentage: number;
+    importance: 'mandatory' | 'preferred';
+  }[];
+  eligible_candidates: CandidateSkillGap[];
+  executive_summary: string;
+  preparation_advisory: string;
 }
 
 // ============================================================================

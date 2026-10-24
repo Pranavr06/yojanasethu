@@ -7,7 +7,10 @@ import {
   FullStudentProfile,
   PlacementCalendarEvent,
   HistoricalPlacementStats,
+  PlacedStudentRecord,
 } from '@/types';
+import PlacedStudentsView from '@/components/PlacedStudentsView';
+import GeminiDriveSkillGapModal from '@/components/GeminiDriveSkillGapModal';
 import { checkAnnouncementEligibility } from '@/lib/rulesEngine';
 import AnnouncementDetailModal from '@/components/AnnouncementDetailModal';
 import PlacementCalendarView from '@/components/PlacementCalendarView';
@@ -35,6 +38,8 @@ import {
   Layers,
   MapPin,
   RefreshCw,
+  Trophy,
+  Bot,
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -48,8 +53,13 @@ export default function StudentPlacementHubPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedAnnouncement, setSelectedAnnouncement] = useState<PlacementAnnouncement | null>(null);
 
+  // Placed students & personal offer state
+  const [placedStudents, setPlacedStudents] = useState<PlacedStudentRecord[]>([]);
+  const [studentOffer, setStudentOffer] = useState<PlacedStudentRecord | null>(null);
+  const [selectedGeminiDriveId, setSelectedGeminiDriveId] = useState<string | null>(null);
+
   // Tab State
-  const [activeTab, setActiveTab] = useState<'announcements' | 'calendar' | 'history' | 'prep'>('announcements');
+  const [activeTab, setActiveTab] = useState<'announcements' | 'calendar' | 'history' | 'prep' | 'placed'>('announcements');
 
   // Filter States
   const [selectedBatch, setSelectedBatch] = useState<string>('all');
@@ -79,19 +89,28 @@ export default function StudentPlacementHubPage() {
           console.error('Error fetching student:', e);
         }
       }
+      if (!studentData && user?.role && user.role !== 'student') {
+        try {
+          const sRes = await fetch('/api/students?usn=NNM24IS159');
+          const sJson = await sRes.json();
+          if (sJson.student) studentData = sJson.student;
+        } catch {}
+      }
       setStudent(studentData);
 
-      // 2. Fetch announcements, calendar events, and history in parallel
-      const [annRes, calRes, histRes] = await Promise.all([
+      // 2. Fetch announcements, calendar events, history, and placed students in parallel
+      const [annRes, calRes, histRes, placedRes] = await Promise.all([
         fetch('/api/placement/announcements'),
         fetch('/api/placement/calendar'),
         fetch('/api/placement/history'),
+        fetch(`/api/placement/placed${studentIdentifier ? `?student_id=${encodeURIComponent(studentIdentifier)}` : ''}`),
       ]);
 
-      const [annJson, calJson, histJson] = await Promise.all([
+      const [annJson, calJson, histJson, placedJson] = await Promise.all([
         annRes.json(),
         calRes.json(),
         histRes.json(),
+        placedRes.json(),
       ]);
 
       if (Array.isArray(annJson.announcements)) {
@@ -102,6 +121,12 @@ export default function StudentPlacementHubPage() {
       }
       if (histJson.stats) {
         setHistoricalStats(histJson.stats);
+      }
+      if (Array.isArray(placedJson.placed_students)) {
+        setPlacedStudents(placedJson.placed_students);
+      }
+      if (placedJson.student_offer) {
+        setStudentOffer(placedJson.student_offer);
       }
     } catch (err) {
       console.error('Error loading placement hub:', err);
@@ -235,6 +260,23 @@ export default function StudentPlacementHubPage() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* Authorized Officer / Governance Preview Banner */}
+      {user?.role && user.role !== 'student' && (
+        <div className="p-4 rounded-2xl bg-indigo-900/30 border border-indigo-500/30 text-indigo-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs backdrop-blur-md">
+          <div className="flex items-center gap-2.5">
+            <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span>
+              <strong>Transparency Hub Preview Mode:</strong> Active audit session for <strong>{user.full_name || 'Prof. Sudesh Rao'}</strong> ({user.role.toUpperCase()}). Showing student-facing eligibility gates and transparency announcements.
+            </span>
+          </div>
+          <Link
+            href={user.role === 'admin' ? '/admin/dashboard' : user.role === 'faculty' || user.role === 'mentor' ? '/mentor' : '/placements/dashboard'}
+            className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold transition-colors whitespace-nowrap self-start sm:self-center border border-white/20"
+          >
+            ← Back to {user.role === 'admin' ? 'Governance Desk' : user.role === 'faculty' || user.role === 'mentor' ? 'Mentor Desk' : 'Placement Desk'}
+          </Link>
+        </div>
+      )}
       {/* 1. Placement Hub Hero Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-[#1E1B4B] via-[#0F172A] to-[#1E1B4B] border border-indigo-500/30 p-6 sm:p-8 text-white shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -294,6 +336,22 @@ export default function StudentPlacementHubPage() {
           </div>
         </div>
       </div>
+
+      {/* Personal Placement Celebration Banner (If Current Student Placed) */}
+      {studentOffer && (
+        <div className="p-6 rounded-3xl bg-gradient-to-r from-emerald-500/20 via-teal-500/15 to-indigo-500/20 border-2 border-emerald-500/60 shadow-xl space-y-2 animate-in fade-in">
+          <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 text-xs font-bold uppercase tracking-wider">
+            <Trophy className="w-4 h-4 text-amber-500" />
+            <span>CAMPUS PLACEMENT SUCCESS • CONGRATULATIONS!</span>
+          </div>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">
+            You have secured an offer from {studentOffer.company_name}!
+          </h2>
+          <p className="text-xs text-slate-700 dark:text-slate-300">
+            Role: <strong>{studentOffer.role_title}</strong> • Package: <strong className="text-emerald-600 dark:text-emerald-400 font-mono text-sm font-extrabold">{studentOffer.ctc_lpa} LPA</strong> • Certified by NMAMIT Examination Cell & Training & Placement Officer (TPO).
+          </p>
+        </div>
+      )}
 
       {/* 2. Key Metrics Snapshot */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -398,11 +456,49 @@ export default function StudentPlacementHubPage() {
           <Sparkles className="w-4 h-4 text-indigo-500" />
           <span>Junior Early Prep Blueprint</span>
         </button>
+
+        <button
+          onClick={() => setActiveTab('placed')}
+          className={`pb-3 px-3 border-b-2 transition-all flex items-center gap-2 whitespace-nowrap ${
+            activeTab === 'placed'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-extrabold'
+              : 'border-transparent hover:text-slate-900 dark:hover:text-white'
+          }`}
+        >
+          <Trophy className="w-4 h-4 text-amber-500" />
+          <span>Placed Students ({placedStudents.length})</span>
+        </button>
       </div>
 
       {/* TAB 1: PLACEMENT ANNOUNCEMENTS & DRIVES */}
       {activeTab === 'announcements' && (
         <div className="space-y-4">
+          {/* Live Campus Placements Ticker */}
+          {placedStudents.length > 0 && (
+            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-purple-500/10 to-indigo-500/10 border border-amber-500/30 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+              <div className="flex items-center gap-2.5">
+                <div className="p-1.5 rounded-lg bg-amber-500 text-white shrink-0">
+                  <Trophy className="w-3.5 h-3.5" />
+                </div>
+                <div className="text-slate-700 dark:text-slate-200">
+                  <span className="font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider text-[10px] block">
+                    Campus Placement Success Update
+                  </span>
+                  <span>
+                    <strong>{placedStudents[0].student_name}</strong> ({placedStudents[0].student_usn}, {placedStudents[0].department_code}) secured an offer at <strong>{placedStudents[0].company_name}</strong> ({placedStudents[0].ctc_lpa} LPA)!
+                  </span>
+                </div>
+              </div>
+              <button
+                onClick={() => setActiveTab('placed')}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 shrink-0 self-start sm:self-center"
+              >
+                <span>View All Placed Students ({placedStudents.length})</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* Filter Toolbar */}
           <div className="glass-panel p-4 rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/60 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 text-xs">
             <div className="flex flex-wrap items-center gap-3">
@@ -628,6 +724,28 @@ export default function StudentPlacementHubPage() {
                           <span className="text-[10px] opacity-75 shrink-0 font-medium">Advisory</span>
                         </div>
                       </div>
+
+                      {/* Gemini AI Recruiter Skill Gap Audit Button */}
+                      <div className="pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedGeminiDriveId(ann.drive_id || ann.id)}
+                          className="w-full p-2.5 rounded-xl bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/40 border border-purple-200/80 dark:border-purple-800/60 text-purple-800 dark:text-purple-300 transition-all flex items-center justify-between text-left group"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Bot className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                            <div>
+                              <span className="font-bold text-[11px] block">
+                                Gemini AI: Skill Sets Lacking Audit
+                              </span>
+                              <span className="text-[10px] text-purple-600/80 dark:text-purple-300/80 block">
+                                Analyze eligible candidates & missing skills for this recruiter
+                              </span>
+                            </div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-purple-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Bottom Action Triggers */}
@@ -677,6 +795,24 @@ export default function StudentPlacementHubPage() {
       {activeTab === 'prep' && (
         <StudentPreparationGuide
           graduationYear={student?.profile?.graduation_year ?? undefined}
+        />
+      )}
+
+      {/* TAB 5: PLACED STUDENTS SHOWCASE (CAMPUS SUCCESS) */}
+      {activeTab === 'placed' && (
+        <PlacedStudentsView
+          placedStudents={placedStudents}
+          currentStudentUsn={(student?.profile?.usn || user?.usn) ?? undefined}
+        />
+      )}
+
+      {/* Gemini AI Recruiter Drive Skill Gap Modal */}
+      {selectedGeminiDriveId && (
+        <GeminiDriveSkillGapModal
+          isOpen={Boolean(selectedGeminiDriveId)}
+          onClose={() => setSelectedGeminiDriveId(null)}
+          driveId={selectedGeminiDriveId}
+          studentIdOrUsn={(student?.profile?.usn || user?.usn) ?? undefined}
         />
       )}
 

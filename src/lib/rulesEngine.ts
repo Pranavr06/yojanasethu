@@ -1,4 +1,4 @@
-import { FullStudentProfile, PlacementDrive, CandidateEvaluation, PlacementAnnouncement, AdvisoryEligibility, EligibilityDecision } from '@/types';
+import { FullStudentProfile, PlacementDrive, CandidateEvaluation, PlacementAnnouncement, AdvisoryEligibility, EligibilityDecision, StudentSkillPassport } from '@/types';
 
 /**
  * 1. DETERMINISTIC ACADEMIC PLANNER (Contineo ERP & CGPA Math)
@@ -56,14 +56,16 @@ export function calculateTargetSgpa(
  * 2. DETERMINISTIC PLACEMENT DRIVE ELIGIBILITY FILTER
  * Matches academic_records from Contineo ERP against recruiter placement_drives
  */
-export function checkDriveEligibility(student: FullStudentProfile, drive: PlacementDrive) {
+export function checkDriveEligibility(student: FullStudentProfile | any, drive: PlacementDrive) {
   const reasons: string[] = [];
-  const branch = student.profile.department_code || 'ISE';
-  const cgpa = student.academic_record?.cgpa ?? 0;
-  const backlogs = student.academic_record?.active_backlogs ?? 0;
-  const gradYear = student.profile.graduation_year;
+  const profile = student?.profile || student || {};
+  const academicRecord = student?.academic_record || (student?.cgpa !== undefined ? student : null);
+  const branch = profile.department_code || student?.department_code || student?.departments?.code || 'ISE';
+  const cgpa = academicRecord?.cgpa ?? student?.cgpa ?? 0;
+  const backlogs = academicRecord?.active_backlogs ?? student?.active_backlogs ?? 0;
+  const gradYear = profile.graduation_year ?? student?.graduation_year;
 
-  if (!student.academic_record) {
+  if (!academicRecord && student?.cgpa === undefined) {
     reasons.push('Academic record not yet synchronized from ERP');
   }
 
@@ -104,7 +106,7 @@ export function checkDriveEligibility(student: FullStudentProfile, drive: Placem
  * Unverified / Self-declared claims get +1 weight.
  */
 export function evaluateDriveCandidate(
-  student: FullStudentProfile,
+  student: FullStudentProfile | any,
   drive: PlacementDrive
 ): CandidateEvaluation {
   const { isEligible, disqualificationReason } = checkDriveEligibility(student, drive);
@@ -127,8 +129,9 @@ export function evaluateDriveCandidate(
     const maxSkillScore = weight * 2;
     totalMaxScore += maxSkillScore;
 
-    const matchedPassportSkill = student.skills.find(
-      (s) => s.skill_name.toLowerCase() === req.name.toLowerCase()
+    const skillsList: StudentSkillPassport[] = (student?.skills || []) as StudentSkillPassport[];
+    const matchedPassportSkill = skillsList.find(
+      (s: StudentSkillPassport) => s.skill_name.toLowerCase() === req.name.toLowerCase()
     );
 
     if (!matchedPassportSkill) {
@@ -194,8 +197,20 @@ export function evaluateDriveCandidate(
     explanation = `Meets academic cutoffs, but 0 skills have been verified by college faculty. All skills are self-declared.`;
   }
 
+  const profile = student?.profile || student || {};
+  const academicRecord = student?.academic_record || (student?.cgpa !== undefined ? student : null);
+  const fullStudent: FullStudentProfile = student?.profile ? student : {
+    profile,
+    academic_record: academicRecord,
+    semester_marks: student?.semester_marks || [],
+    skills: student?.skills || [],
+    evidence_submissions: student?.evidence_submissions || [],
+    roadmaps: student?.roadmaps || [],
+    target_role: `${profile.department_code || 'Engineering'} Core Specialist`,
+  };
+
   return {
-    student,
+    student: fullStudent,
     is_eligible: isEligible,
     disqualification_reason: disqualificationReason,
     match_score: matchScore,

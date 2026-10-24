@@ -1381,22 +1381,7 @@ export default function MockInterviewAssistant() {
               scorecard and delivery audit at the conclusion.
             </p>
 
-            {/* Voice Command Guidance Pill */}
-            <div className="flex flex-wrap items-center gap-2 pt-1 text-[11px] text-purple-200">
-              <span className="font-semibold text-white">Voice Commands:</span>
-              <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/20 font-mono">
-                "Pass"
-              </span>
-              <span>— auto-saves & advances to next question</span>
-              <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/20 font-mono">
-                "Repeat question"
-              </span>
-              <span>— re-reads aloud</span>
-              <span className="px-2 py-0.5 rounded-md bg-white/10 border border-white/20 font-mono">
-                "Stop interview"
-              </span>
-              <span>— end early with report</span>
-            </div>
+
           </div>
 
           {/* Assistant Visualizer & Mode Controls */}

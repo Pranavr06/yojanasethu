@@ -58,13 +58,15 @@ export default function MentorMenteeDirectory({
   const [sortAsc, setSortAsc] = useState(true);
 
   // Filter mentees
-  const filtered = mentees.filter((m) => {
+  const filtered = (mentees || []).filter((m) => {
+    if (!m) return false;
+
     // Search
     if (search.trim()) {
       const q = search.trim().toLowerCase();
-      const matchName = m.full_name.toLowerCase().includes(q);
-      const matchUsn = m.usn.toLowerCase().includes(q);
-      const matchDept = m.department_code.toLowerCase().includes(q);
+      const matchName = (m.full_name || '').toLowerCase().includes(q);
+      const matchUsn = (m.usn || '').toLowerCase().includes(q);
+      const matchDept = (m.department_code || '').toLowerCase().includes(q);
       if (!matchName && !matchUsn && !matchDept) return false;
     }
 
@@ -78,9 +80,15 @@ export default function MentorMenteeDirectory({
   // Sort
   const sorted = [...filtered].sort((a, b) => {
     let cmp = 0;
-    if (sortBy === 'usn') cmp = a.usn.localeCompare(b.usn);
-    else if (sortBy === 'cgpa') cmp = a.cgpa - b.cgpa;
-    else if (sortBy === 'skills') cmp = a.verified_skills_count - b.verified_skills_count;
+    if (sortBy === 'usn') {
+      const usnA = (a.usn || '').trim();
+      const usnB = (b.usn || '').trim();
+      cmp = usnA.localeCompare(usnB);
+    } else if (sortBy === 'cgpa') {
+      cmp = (Number(a.cgpa) || 0) - (Number(b.cgpa) || 0);
+    } else if (sortBy === 'skills') {
+      cmp = (Number(a.verified_skills_count) || 0) - (Number(b.verified_skills_count) || 0);
+    }
     return sortAsc ? cmp : -cmp;
   });
 
@@ -106,8 +114,12 @@ export default function MentorMenteeDirectory({
               <h3 className="text-sm md:text-base font-bold text-slate-900 dark:text-white">
                 Mentee Student Academic & Verification Roster
               </h3>
-              <span className="text-[10px] px-2.5 py-0.5 rounded-full font-bold bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-500/30">
-                {sorted.length} Students
+              <span className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold border ${
+                sorted.length >= 12
+                  ? 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-500/30'
+                  : 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-500/30'
+              }`}>
+                {sorted.length} / 12 Mentees Assigned{sorted.length >= 12 ? ' (Capacity Full)' : ''}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -226,8 +238,16 @@ export default function MentorMenteeDirectory({
           <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-slate-800 dark:text-slate-200 font-medium">
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={9} className="py-8 text-center text-slate-400">
-                  No students match the criteria.
+                <td colSpan={9} className="py-12 text-center text-slate-400">
+                  <div className="flex flex-col items-center justify-center gap-1.5">
+                    <Users className="w-8 h-8 text-blue-500 opacity-40 mb-1" />
+                    <p className="font-bold text-slate-700 dark:text-slate-300">
+                      No Mentees Currently Assigned to Your Cohort
+                    </p>
+                    <p className="text-xs text-slate-500 max-w-md">
+                      The Placement Department assigns up to 12 mentees per faculty mentor. Once assigned, your mentees will appear here with complete academic & verification standings.
+                    </p>
+                  </div>
                 </td>
               </tr>
             ) : (
@@ -238,18 +258,18 @@ export default function MentorMenteeDirectory({
                 >
                   <td className="py-3 px-4">
                     <div className="font-bold text-slate-900 dark:text-white">
-                      {m.full_name}
+                      {m.full_name || 'Student'}
                     </div>
-                    <div className="text-[11px] text-slate-400">{m.email}</div>
+                    <div className="text-[11px] text-slate-400">{m.email || '—'}</div>
                   </td>
 
                   <td className="py-3 px-4 font-mono font-semibold text-slate-700 dark:text-slate-300">
-                    {m.usn}
+                    {m.usn || 'N/A'}
                   </td>
 
                   <td className="py-3 px-4">
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/30">
-                      {m.department_code}
+                      {m.department_code || 'GEN'}
                     </span>
                   </td>
 
@@ -257,14 +277,14 @@ export default function MentorMenteeDirectory({
                     <div className="flex items-center gap-1.5 font-bold text-sm">
                       <span
                         className={
-                          m.cgpa >= 8.5
+                          (Number(m.cgpa) || 0) >= 8.5
                             ? 'text-emerald-600 dark:text-emerald-400'
-                            : m.cgpa >= 7.0
+                            : (Number(m.cgpa) || 0) >= 7.0
                             ? 'text-sky-600 dark:text-sky-400'
                             : 'text-amber-600 dark:text-amber-400'
                         }
                       >
-                        {m.cgpa.toFixed(2)}
+                        {(Number(m.cgpa) || 0).toFixed(2)}
                       </span>
                       <span className="text-[10px] font-normal text-slate-400">/ 10.0</span>
                     </div>

@@ -4,8 +4,10 @@ import React, { useEffect, useState } from 'react';
 import MentorMenteeDirectory from '@/components/MentorMenteeDirectory';
 import { Users, RefreshCw, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
+import { useAuth } from '@/lib/authContext';
 
 export default function MentorMenteesPage() {
+  const { user } = useAuth();
   const [mentees, setMentees] = useState<any[]>([]);
   const [departments, setDepartments] = useState<{ code: string; name: string }[]>([]);
   const [selectedDept, setSelectedDept] = useState<string>('ALL');
@@ -14,8 +16,9 @@ export default function MentorMenteesPage() {
   const fetchMentees = async () => {
     setLoading(true);
     try {
+      const mentorQuery = user?.id ? `&mentor_id=${encodeURIComponent(user.id)}` : '';
       const [mRes, dRes] = await Promise.all([
-        fetch(`/api/mentor/mentees?dept=${selectedDept}`),
+        fetch(`/api/mentor/mentees?dept=${selectedDept}${mentorQuery}`),
         fetch('/api/mentor/departments'),
       ]);
       const [mData, dData] = await Promise.all([mRes.json(), dRes.json()]);
@@ -31,7 +34,7 @@ export default function MentorMenteesPage() {
 
   useEffect(() => {
     fetchMentees();
-  }, [selectedDept]);
+  }, [selectedDept, user?.id]);
 
   return (
     <div className="space-y-6">

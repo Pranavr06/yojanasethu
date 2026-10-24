@@ -41,7 +41,7 @@ export default function MentorDashboardPage() {
         fetch('/api/college/cohort-analytics'),
         fetch(`/api/mentor/submissions?status=all&dept=${selectedDept}`),
         fetch('/api/mentor/corrections'),
-        fetch(`/api/mentor/mentees?dept=${selectedDept}`),
+        fetch(`/api/mentor/mentees?dept=${selectedDept}${user?.id ? `&mentor_id=${encodeURIComponent(user.id)}` : ''}`),
       ]);
 
       const [deptData, analyticsData, subData, corrData, menteeData] = await Promise.all([

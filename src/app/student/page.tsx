@@ -27,7 +27,8 @@ import {
   Radio,
   FileSearch,
   Bot,
-  Mic
+  Mic,
+  Trophy
 } from 'lucide-react';
 
 export default function StudentDashboard() {
@@ -37,6 +38,19 @@ export default function StudentDashboard() {
   const [dsaSolved, setDsaSolved] = useState<number | null>(null);
   const [readinessScore, setReadinessScore] = useState<number | null>(null);
   const [targetRole, setTargetRole] = useState<string>('Software Developer');
+  const [mentor, setMentor] = useState<{
+    id: string;
+    full_name: string;
+    email: string;
+    department_code?: string;
+    department_name?: string;
+    designation?: string;
+  } | null>(null);
+  const [placementOffer, setPlacementOffer] = useState<{
+    company_name: string;
+    role_title: string;
+    ctc_lpa: number;
+  } | null>(null);
 
   useEffect(() => {
     async function fetchStats() {
@@ -57,10 +71,24 @@ export default function StudentDashboard() {
             setTargetRole(gapData.analysis.target_role);
           }
         }
+        try {
+          const mentorRes = await fetch('/api/student/mentor' + (user?.id ? '?student_id=' + encodeURIComponent(user.id) : ''));
+          if (mentorRes.ok) {
+            const mData = await mentorRes.json();
+            if (mData.mentor) setMentor(mData.mentor);
+          }
+        } catch {}
+        try {
+          const placedRes = await fetch('/api/placement/placed' + (user?.usn || user?.id ? '?student_id=' + encodeURIComponent(user.usn || user.id || '') : ''));
+          if (placedRes.ok) {
+            const pData = await placedRes.json();
+            if (pData.student_offer) setPlacementOffer(pData.student_offer);
+          }
+        } catch {}
       } catch {}
     }
     fetchStats();
-  }, []);
+  }, [user?.id]);
 
   const skills = [
     { name: 'Python & AI Engineering', level: 85 },
@@ -205,6 +233,92 @@ export default function StudentDashboard() {
             Faculty Endorsed
           </p>
         </Link>
+      </section>
+      {/* Placed Student Offer Celebration Card */}
+      {placementOffer && (
+        <section className="p-5 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-teal-500/15 to-indigo-500/20 border-2 border-emerald-500/50 shadow-md animate-in fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30 shrink-0">
+                <Trophy className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800">
+                    Campus Placement Secured
+                  </span>
+                  <span className="text-xs text-slate-400">•</span>
+                  <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                    Offer Certified
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 dark:text-white mt-0.5">
+                  Placed at {placementOffer.company_name} — {placementOffer.role_title}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Package: <strong className="text-emerald-600 dark:text-emerald-400 font-mono text-sm font-extrabold">{placementOffer.ctc_lpa} LPA</strong> • Certified by NMAMIT Examination Cell & Training & Placement Cell.
+                </p>
+              </div>
+            </div>
+            <Link
+              href="/student/placement-hub"
+              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-all whitespace-nowrap self-start sm:self-center"
+            >
+              View in Placement Hub →
+            </Link>
+          </div>
+        </section>
+      )}
+
+      {/* Assigned Faculty Mentor Card */}
+      <section className="rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/60 p-5 shadow-sm">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+              <GraduationCap className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                  Assigned Faculty Mentor
+                </span>
+                {mentor && (
+                  <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Active Allocation</span>
+                  </span>
+                )}
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-0.5">
+                {mentor ? mentor.full_name : 'Allocation Pending by Placement Cell'}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {mentor
+                  ? (mentor.designation || 'Faculty Mentor') + ' • ' + (mentor.department_name || mentor.department_code || 'Academic Department')
+                  : 'Your assigned faculty mentor will guide your technical proofs, assessment retakes, and placement readiness.'}
+              </p>
+            </div>
+          </div>
+
+          {mentor ? (
+            <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+              <a
+                href={"mailto:" + mentor.email}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold hover:bg-indigo-100 transition-colors"
+                title={"Email " + mentor.full_name}
+              >
+                <span>{mentor.email}</span>
+              </a>
+              <span className="text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                Dept: <strong className="text-slate-900 dark:text-white">{mentor.department_code || "ISE"}</strong>
+              </span>
+            </div>
+          ) : (
+            <div className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-xl self-start sm:self-center font-medium">
+              Contact Placement Cell for Mentor Allocation
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Permanent Student Resume Storage Card */}
