@@ -47,6 +47,7 @@ import {
   VoiceAnalysisResult,
   AcousticTelemetry,
 } from '@/app/api/interview/evaluate/route';
+import { useAuth } from '@/lib/authContext';
 
 export type InterviewTrack = 'fullstack' | 'aiml' | 'data' | 'behavioral';
 
@@ -344,6 +345,7 @@ function formatTime(totalSeconds: number): string {
 }
 
 export default function MockInterviewAssistant() {
+  const { user } = useAuth();
   const [selectedTrack, setSelectedTrack] = useState<InterviewTrack>('fullstack');
   const [sessionState, setSessionState] = useState<InterviewSessionState>('idle');
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
@@ -942,10 +944,13 @@ export default function MockInterviewAssistant() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               role: TRACK_QUESTIONS[selectedTrack].title,
+              track: selectedTrack,
+              studentId: user?.id || user?.usn,
               question: savedAnswer.questionText,
               answer: savedAnswer.userAnswer || 'No verbal answer was provided.',
               keyPoints: savedAnswer.keyPoints,
               acousticMetrics: savedAnswer.acousticTelemetry,
+              questionIndex: savedAnswer.questionIndex,
             }),
           });
 
