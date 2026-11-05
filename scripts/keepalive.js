@@ -2,11 +2,11 @@
  * Supabase Keepalive Ping Script for YojanaSethu
  *
  * Keeps Supabase free-tier project active by executing real queries against
- * PostgREST and Auth endpoints, resetting the 7-day inactivity pause counter.
+ * PostgREST tables, Auth, and Storage endpoints, preventing the 7-day inactivity pause.
  *
  * Can be run:
- * 1. Inside GitHub Actions on a 5-day schedule (using GitHub Secrets)
- * 2. Locally via Node.js: `node scripts/keepalive.js` (reads .env.local)
+ * 1. Inside GitHub Actions on a daily schedule (using GitHub Secrets)
+ * 2. Locally via Node.js: `npm run keepalive` (reads .env.local)
  * 3. Via Windows Task Scheduler using keepalive.xml
  */
 
@@ -14,8 +14,8 @@ const fs = require('fs');
 const path = require('path');
 
 function getCredentials() {
-  let url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-  let anonKey = process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+  let url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
+  let anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
 
   // Fallback to .env.local if running locally
   if (!url || !anonKey) {
@@ -47,85 +47,114 @@ async function pingSupabase() {
 
   if (!url || !anonKey) {
     console.error('❌ ERROR: Missing Supabase credentials!');
-    console.error('Ensure SUPABASE_URL and SUPABASE_ANON_KEY are set in environment or .env.local.');
+    console.error('Ensure NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are set.');
     process.exit(1);
   }
 
   console.log(`Target Supabase URL: ${url}`);
-  let allSuccess = true;
+  let successCount = 0;
 
-  // 1. PostgREST Database Query (executes a real SQL SELECT against PostgreSQL)
+  const headers = {
+    'apikey': anonKey,
+    'Authorization': `Bearer ${anonKey}`,
+  };
+
+  // 1. PostgREST Query: placement_announcements
   try {
-    const postgrestStart = Date.now();
-    const restRes = await fetch(`${url}/rest/v1/profiles?select=count`, {
+    const start = Date.now();
+    const res = await fetch(`${url}/rest/v1/placement_announcements?select=id,title&limit=1`, {
       method: 'GET',
-      headers: {
-        'apikey': anonKey,
-        'Authorization': `Bearer ${anonKey}`,
-        'Range': '0-0',
-      },
+      headers,
     });
-    const duration = Date.now() - postgrestStart;
-
-    if (restRes.ok) {
-      console.log(`✅ [PostgREST / Database]: OK (${restRes.status} in ${duration}ms) — Active database query registered.`);
+    const dur = Date.now() - start;
+    if (res.ok) {
+      console.log(`✅ [Database - Announcements]: OK (${res.status} in ${dur}ms) — PostgreSQL query executed.`);
+      successCount++;
     } else {
-      console.warn(`⚠️ [PostgREST / Database]: Returned HTTP ${restRes.status} ${restRes.statusText}`);
-      // Even 404 or table check still hits PostgREST and registers API activity
+      console.warn(`⚠️ [Database - Announcements]: HTTP ${res.status} (${dur}ms)`);
     }
   } catch (err) {
-    console.error(`❌ [PostgREST / Database]: Request failed:`, err.message);
-    allSuccess = false;
+    console.error(`❌ [Database - Announcements]: ${err.message}`);
   }
 
-  // 2. Auth Service Health Check
+  // 2. PostgREST Query: companies
   try {
-    const authStart = Date.now();
-    const authRes = await fetch(`${url}/auth/v1/health`, {
+    const start = Date.now();
+    const res = await fetch(`${url}/rest/v1/companies?select=id,name&limit=1`, {
       method: 'GET',
-      headers: {
-        'apikey': anonKey,
-      },
+      headers,
     });
-    const duration = Date.now() - authStart;
-
-    if (authRes.ok) {
-      console.log(`✅ [Auth / GoTrue]: OK (${authRes.status} in ${duration}ms) — Auth service alive.`);
+    const dur = Date.now() - start;
+    if (res.ok) {
+      console.log(`✅ [Database - Companies]: OK (${res.status} in ${dur}ms) — PostgreSQL query executed.`);
+      successCount++;
     } else {
-      console.warn(`⚠️ [Auth / GoTrue]: Returned HTTP ${authRes.status}`);
+      console.warn(`⚠️ [Database - Companies]: HTTP ${res.status} (${dur}ms)`);
     }
   } catch (err) {
-    console.error(`❌ [Auth / GoTrue]: Request failed:`, err.message);
-    allSuccess = false;
+    console.error(`❌ [Database - Companies]: ${err.message}`);
   }
 
-  // 3. Storage Service Health Check
+  // 3. PostgREST Query: profiles
   try {
-    const storageStart = Date.now();
-    const storageRes = await fetch(`${url}/storage/v1/bucket`, {
+    const start = Date.now();
+    const res = await fetch(`${url}/rest/v1/profiles?select=id,role&limit=1`, {
       method: 'GET',
-      headers: {
-        'apikey': anonKey,
-        'Authorization': `Bearer ${anonKey}`,
-      },
+      headers,
     });
-    const duration = Date.now() - storageStart;
-
-    if (storageRes.ok) {
-      console.log(`✅ [Storage API]: OK (${storageRes.status} in ${duration}ms) — Storage service alive.`);
+    const dur = Date.now() - start;
+    if (res.ok) {
+      console.log(`✅ [Database - Profiles]: OK (${res.status} in ${dur}ms) — PostgreSQL query executed.`);
+      successCount++;
     } else {
-      console.log(`ℹ️ [Storage API]: Status ${storageRes.status} (${duration}ms) — Endpoint reached.`);
+      console.warn(`⚠️ [Database - Profiles]: HTTP ${res.status} (${dur}ms)`);
     }
   } catch (err) {
-    console.warn(`ℹ️ [Storage API]: Request notice:`, err.message);
+    console.error(`❌ [Database - Profiles]: ${err.message}`);
+  }
+
+  // 4. Auth Service Health Check
+  try {
+    const start = Date.now();
+    const res = await fetch(`${url}/auth/v1/health`, {
+      method: 'GET',
+      headers: { 'apikey': anonKey },
+    });
+    const dur = Date.now() - start;
+    if (res.ok) {
+      console.log(`✅ [Auth / GoTrue]: OK (${res.status} in ${dur}ms) — Auth service alive.`);
+      successCount++;
+    } else {
+      console.warn(`⚠️ [Auth / GoTrue]: HTTP ${res.status} (${dur}ms)`);
+    }
+  } catch (err) {
+    console.error(`❌ [Auth / GoTrue]: ${err.message}`);
+  }
+
+  // 5. Storage Service Health Check
+  try {
+    const start = Date.now();
+    const res = await fetch(`${url}/storage/v1/bucket`, {
+      method: 'GET',
+      headers,
+    });
+    const dur = Date.now() - start;
+    if (res.ok) {
+      console.log(`✅ [Storage API]: OK (${res.status} in ${dur}ms) — Storage service alive.`);
+      successCount++;
+    } else {
+      console.log(`ℹ️ [Storage API]: HTTP ${res.status} (${dur}ms)`);
+    }
+  } catch (err) {
+    console.warn(`ℹ️ [Storage API]: ${err.message}`);
   }
 
   console.log('----------------------------------------------------');
-  if (allSuccess) {
-    console.log('🎉 SUCCESS: Supabase project successfully kept alive! 7-day inactivity pause timer reset.');
+  if (successCount > 0) {
+    console.log(`🎉 SUCCESS: ${successCount} keepalive checks succeeded! Supabase database activity registered.`);
     process.exit(0);
   } else {
-    console.error('⚠️ WARNING: One or more keepalive pings encountered issues.');
+    console.error('❌ FAILURE: All keepalive checks failed. Project may be paused or unreachable.');
     process.exit(1);
   }
 }

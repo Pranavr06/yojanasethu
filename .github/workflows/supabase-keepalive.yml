@@ -2,8 +2,9 @@ name: Supabase Free-Tier Keepalive
 
 on:
   schedule:
-    # Runs automatically every 5 days at 00:00 UTC (prevents Supabase 7-day auto-pause)
-    - cron: '0 0 */5 * *'
+    # Runs twice every day at 06:00 and 18:00 UTC (11:30 AM & 11:30 PM IST)
+    # Supabase pauses projects with < 7 days of daily database queries.
+    - cron: '0 6,18 * * *'
   workflow_dispatch: # Allows manual 1-click trigger from GitHub Actions tab
 
 jobs:
@@ -18,10 +19,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Execute Supabase Keepalive Heartbeat
         env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || secrets.SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.SUPABASE_ANON_KEY }}
         run: node scripts/keepalive.js
