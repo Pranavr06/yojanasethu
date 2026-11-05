@@ -3,7 +3,7 @@
   <RegistrationInfo>
     <Date>2026-10-29T00:00:00</Date>
     <Author>YojanaSethu</Author>
-    <Description>Pings Supabase PostgreSQL (PostgREST) and Auth APIs every 5 days to prevent the free-tier database from pausing due to inactivity.</Description>
+    <Description>Pings Supabase PostgreSQL (PostgREST) and Auth APIs daily to prevent the free-tier database from pausing due to inactivity.</Description>
     <URI>\YojanaSethu-SupabaseKeepalive</URI>
   </RegistrationInfo>
   <Triggers>
@@ -11,7 +11,7 @@
       <StartBoundary>2026-10-30T09:00:00</StartBoundary>
       <Enabled>true</Enabled>
       <ScheduleByDay>
-        <DaysInterval>5</DaysInterval>
+        <DaysInterval>1</DaysInterval>
       </ScheduleByDay>
     </CalendarTrigger>
   </Triggers>
